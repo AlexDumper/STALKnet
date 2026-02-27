@@ -147,7 +147,8 @@ function handleCommand(cmd) {
             ];
             const users = ["alice", "bob", "charlie", "diana", "Стрелок", "Волк", "Призрак", "Меченый"];
             const idx = Math.floor(Math.random() * msgs.length);
-            addMessage(msgs[idx], "user", users[idx]);
+            const user = users[Math.floor(Math.random() * users.length)];
+            addMessage(msgs[idx], "user", user);
             break;
         case "/takemocktask":
             const taskId = Math.floor(Math.random() * 100);
