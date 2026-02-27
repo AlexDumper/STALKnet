@@ -39,13 +39,10 @@ function addMessage(text, type, msgUsername = null) {
     
     if (type === "system") {
         icon = "●";
-        prefix = "│ ";
     } else if (type === "task") {
         icon = "◆";
-        prefix = "│ ";
     } else if (type === "user") {
         icon = "▸";
-        prefix = "│ ";
     }
     
     div.innerHTML = prefix + "<span class=\"timestamp\">[" + time + "]</span> <span class=\"icon\">" + icon + "</span> " + usernameDisplay + text;
