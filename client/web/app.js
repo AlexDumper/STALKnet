@@ -8,6 +8,11 @@ const userDisplay = document.getElementById("userDisplay");
 let username = "guest";
 let connected = false;
 
+// История сообщений
+let messageHistory = [];
+let historyIndex = -1;
+let currentInput = "";
+
 setTimeout(() => {
     connected = true;
     statusDisplay.innerHTML = "<span class=\"header-decorator\">[</span>●<span class=\"header-decorator\">]</span> Подключено";
@@ -51,6 +56,11 @@ function addMessage(text, type, msgUsername = null) {
 function sendMessage() {
     const text = input.value.trim();
     if (!text) return;
+    
+    // Сохраняем в историю
+    messageHistory.push(text);
+    historyIndex = messageHistory.length;
+    
     input.value = "";
     if (text.startsWith("/")) {
         handleCommand(text);
@@ -157,6 +167,29 @@ function handleCommand(cmd) {
 sendBtn.addEventListener("click", sendMessage);
 input.addEventListener("keypress", (e) => {
     if (e.key === "Enter") sendMessage();
+});
+
+// Навигация по истории сообщений (стрелки вверх/вниз)
+input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (historyIndex > 0) {
+            if (historyIndex === messageHistory.length) {
+                currentInput = input.value;
+            }
+            historyIndex--;
+            input.value = messageHistory[historyIndex];
+        }
+    } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (historyIndex < messageHistory.length - 1) {
+            historyIndex++;
+            input.value = messageHistory[historyIndex];
+        } else if (historyIndex === messageHistory.length - 1) {
+            historyIndex++;
+            input.value = currentInput;
+        }
+    }
 });
 
 document.addEventListener("keydown", (e) => {
