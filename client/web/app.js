@@ -40,10 +40,26 @@ function addMessage(text, type, msgUsername = null, isReply = false) {
     let prefix = "";
     let icon = "○";
     let usernameDisplay = "";
+    let messageText = text;
+    
+    // Если это ответ, извлекаем ник получателя из текста
+    let recipientUser = null;
+    if (isReply && text.match(/^\[[^\]]+\]/)) {
+        const match = text.match(/^\[([^\]]+)\]\s*(.*)/);
+        if (match) {
+            recipientUser = match[1];
+            messageText = match[2];
+        }
+    }
     
     // Отображение имени отправителя
     if (msgUsername) {
         usernameDisplay = "<span class=\"username\" onclick=\"setReplyTo('" + msgUsername + "')\">[" + msgUsername + "]</span> ";
+    }
+    
+    // Отображение имени получателя (для ответов)
+    if (recipientUser) {
+        usernameDisplay += "<span class=\"username\" onclick=\"setReplyTo('" + recipientUser + "')\">[" + recipientUser + "]</span> ";
     }
     
     if (type === "system") {
@@ -51,10 +67,10 @@ function addMessage(text, type, msgUsername = null, isReply = false) {
     } else if (type === "task") {
         icon = "◆";
     } else if (type === "user") {
-        icon = isReply ? "↗" : "▸";
+        icon = isReply ? "⇔" : "▸";
     }
     
-    div.innerHTML = prefix + "<span class=\"timestamp\">[" + time + "]</span> <span class=\"icon\">" + icon + "</span> " + usernameDisplay + text;
+    div.innerHTML = prefix + "<span class=\"timestamp\">[" + time + "]</span> <span class=\"icon\">" + icon + "</span> " + usernameDisplay + messageText;
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
 }
