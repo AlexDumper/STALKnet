@@ -71,7 +71,6 @@ function handleCommand(cmd) {
             addMessage("│ /mock     - Отправить сообщение            │", "system");
             addMessage("│ /mockmsg  - Случайное сообщение            │", "system");
             addMessage("│ /mocktask - Уведомление о задаче           │", "system");
-            addMessage("╰────────────────────────────────────────────╯", "system");
             break;
         case "/clear":
             messages.innerHTML = "";

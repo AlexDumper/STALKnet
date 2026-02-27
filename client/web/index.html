@@ -93,35 +93,14 @@
         #sendBtn { 
             background: #006600; 
             color: #00cc00; 
-            border: 1px solid #00cc00;
-            padding: 8px 15px; 
+            padding: 10px 20px; 
             cursor: pointer; 
             font-family: monospace;
             font-size: 16px;
             letter-spacing: 2px;
+            border: none;
         }
         #sendBtn:hover { background: #009900; color: #00ff00; }
-        .help { 
-            color: #009900; 
-            font-size: 14px; 
-            margin-top: 5px;
-            padding: 8px 12px;
-            border: 1px dashed #004400;
-            background: #000900;
-        }
-        .help-title {
-            color: #00cc00;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        .help-command {
-            color: #009900;
-            margin-right: 12px;
-        }
-        .help-command:hover {
-            color: #00ff00;
-            cursor: pointer;
-        }
         .timestamp { color: #006600; margin-right: 10px; }
         .divider {
             color: #004400;
@@ -150,26 +129,10 @@
         <div class="input-area">
             <div class="input-wrapper">
                 <span class="input-prefix">┌─┤</span>
-                <input type="text" id="messageInput" placeholder="Type a message or /command..." autofocus>
+                <input type="text" id="messageInput" placeholder="Введите сообщение или /команду..." autofocus>
                 <span class="input-prefix">├─┐</span>
             </div>
-            <button id="sendBtn">[ SEND ]</button>
-        </div>
-        <div class="help">
-            <div class="help-title">╭─ [system] Доступные команды:</div>
-            <div style="margin-top: 5px;">
-                <span class="help-command">/help</span>
-                <span class="help-command">/clear</span>
-                <span class="help-command">/nick</span>
-                <span class="help-command">/connect</span>
-                <span class="help-command">/quit</span>
-                <span class="help-command">/mock</span>
-                <span class="help-command">/mockmsg</span>
-                <span class="help-command">/mocktask</span>
-                <span class="help-command">│</span>
-                <span class="help-command">Ctrl+L: очистить</span>
-            </div>
-            <div style="margin-top: 5px; color: #006600;">╰──────────────────────────────────────────────────────────╯</div>
+            <button id="sendBtn">SEND</button>
         </div>
     </div>
     <script src="app.js"></script>
