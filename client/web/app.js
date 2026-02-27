@@ -48,7 +48,7 @@ function addMessage(text, type, msgUsername = null, isReply = false, recipientUs
     
     // Отображение имени получателя (для ответов)
     if (recipientUsername) {
-        usernameDisplay += "<span class=\"username\" onclick=\"setReplyTo('" + recipientUsername + "')\">[" + recipientUsername + "]</span> ";
+        usernameDisplay += "<span class=\"username\" onclick=\"setReplyTo('" + recipientUsername + "')\">> [" + recipientUsername + "]</span> ";
     }
     
     if (type === "system") {
@@ -93,8 +93,9 @@ function sendMessage() {
 // Функция для установки получателя ответа
 function setReplyTo(nick) {
     replyToUser = nick;
-    input.value = "[" + nick + "] ";
+    input.value = "";
     input.focus();
+    input.placeholder = "Ответ " + nick + "...";
 }
 
 // Делаем функцию доступной глобально для onclick
