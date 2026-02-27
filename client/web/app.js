@@ -65,7 +65,7 @@ function addMessage(text, type, msgUsername = null, isReply = false, recipientUs
 }
 
 function sendMessage() {
-    const text = input.value.trim();
+    let text = input.value.trim();
     if (!text) return;
     
     // Сохраняем в историю
@@ -74,13 +74,14 @@ function sendMessage() {
     
     input.value = "";
     
-    // Формируем сообщение с ответом если нужно
+    // Проверяем, есть ли получатель в начале сообщения (формат "[ник]: текст")
     let isReply = false;
     let recipientUser = null;
-    if (replyToUser) {
+    const replyMatch = text.match(/^\[([^\]]+)\]:\s*(.*)/);
+    if (replyMatch) {
         isReply = true;
-        recipientUser = replyToUser;
-        replyToUser = null;  // сбрасываем после отправки
+        recipientUser = replyMatch[1];
+        text = replyMatch[2];  // отрезаем "[ник]: " и оставляем только текст
     }
     
     if (text.startsWith("/")) {
@@ -93,9 +94,8 @@ function sendMessage() {
 // Функция для установки получателя ответа
 function setReplyTo(nick) {
     replyToUser = nick;
-    input.value = "";
+    input.value = "[" + nick + "]: ";
     input.focus();
-    input.placeholder = "Ответ " + nick + "...";
 }
 
 // Делаем функцию доступной глобально для onclick
