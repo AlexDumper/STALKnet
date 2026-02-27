@@ -82,7 +82,8 @@ function handleCommand(cmd) {
             addMessage("│ /quit - Выйти", "system");
             addMessage("│ /mock - Отправить сообщение", "system");
             addMessage("│ /mockmsg - Случайное сообщение", "system");
-            addMessage("│ /mocktask - Уведомление о задаче", "system");
+            addMessage("│ /mocktask - Показать задание", "system");
+            addMessage("│ /takemocktask - Взять задание", "system");
             addMessage("╰────────────────────────────────────────────╯", "system");
             break;
         case "/clear":
@@ -132,26 +133,64 @@ function handleCommand(cmd) {
             const idx = Math.floor(Math.random() * msgs.length);
             addMessage(msgs[idx], "user", users[idx]);
             break;
+        case "/takemocktask":
+            const taskId = Math.floor(Math.random() * 100);
+            addMessage("╭────────────────────────────────────────────╮", "system");
+            addMessage("│ " + username + " взял задание #" + taskId, "system");
+            addMessage("╰────────────────────────────────────────────╯", "system");
+            break;
         case "/mocktask":
             const tasks = [
-                "Найти артефакт 'Медуза' в Янтарном озере",
-                "Уничтожить гнездо кровососов в болотах",
-                "Доставить контейнер с образцами в Сидоровичу",
-                "Исследовать аномалию 'Трамплин' на Кордоне",
-                "Найти схрон с оружием по координатам",
-                "Ликвидировать бандгруппу на Свалке",
-                "Взять кровь мутанта для учёных",
-                "Проводить сталкеров через Выжигатель мозгов",
-                "Найти пропавшего сталкера в Припяти",
-                "Зачистить территорию от зомбированных",
-                "Добыть артефакт 'Душа' из лаборатории X-18",
-                "Проверить сигналы из тёмной долины"
+                {
+                    id: 42,
+                    title: "Найти артефакт 'Медуза'",
+                    description: "В Янтарном озере замечен редкий артефакт",
+                    client: "Сахаров",
+                    reward: "1500 RU, артефакт 'Кристалл'"
+                },
+                {
+                    id: 17,
+                    title: "Уничтожить гнездо кровососов",
+                    description: "Сталкеры сообщают о логове в болотах",
+                    client: "Сидорович",
+                    reward: "2000 RU, аптечки x5"
+                },
+                {
+                    id: 89,
+                    title: "Доставить контейнер с образцами",
+                    description: "Забрать у новичков на Кордоне",
+                    client: "Волк",
+                    reward: "1000 RU, патроны 5.45x39"
+                },
+                {
+                    id: 56,
+                    title: "Исследовать аномалию 'Трамплин'",
+                    description: "Зафиксирована аномальная активность",
+                    client: "Академик Круглов",
+                    reward: "2500 RU, детектор 'Медведь'"
+                },
+                {
+                    id: 33,
+                    title: "Найти схрон с оружием",
+                    description: "Координаты: свалка, старый ангар",
+                    client: "Меченый",
+                    reward: "Оружие на выбор"
+                },
+                {
+                    id: 71,
+                    title: "Ликвидировать бандгруппу",
+                    description: "Бандиты терроризируют новичков",
+                    client: "Долг",
+                    reward: "1800 RU, броня 'Берилл'"
+                }
             ];
             const tidx = Math.floor(Math.random() * tasks.length);
-            const tid = Math.floor(Math.random() * 100);
+            const task = tasks[tidx];
             addMessage("╭────────────────────────────────────────────╮", "task");
-            addMessage("│ Задача #" + tid + " создана: " + tasks[tidx], "task");
-            addMessage("│ Назначена: " + username, "task");
+            addMessage("│ Задача #" + task.id + ": " + task.title, "task");
+            addMessage("│ Описание: " + task.description, "task");
+            addMessage("│ Заказчик: " + task.client, "task");
+            addMessage("│ Награда: " + task.reward, "task");
             addMessage("╰────────────────────────────────────────────╯", "task");
             break;
         default:
