@@ -88,7 +88,7 @@ function sendMessage() {
 // Функция для установки получателя ответа
 function setReplyTo(nick) {
     replyToUser = nick;
-    input.value = "";
+    input.value = "[" + nick + "] ";
     input.focus();
 }
 
