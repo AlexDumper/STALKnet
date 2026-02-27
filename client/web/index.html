@@ -13,28 +13,73 @@
             font-size: 18px;
             line-height: 1.5;
         }
-        .container { display: flex; flex-direction: column; height: 100vh; padding: 10px; }
+        .container { 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            padding: 10px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
         .header { 
             background: #001100; 
             color: #00cc00; 
-            padding: 10px; 
+            padding: 5px 10px;
             display: flex; 
             justify-content: space-between;
-            border: 1px solid #006600;
+            border-top: 1px solid #006600;
+            border-bottom: 1px solid #006600;
+            letter-spacing: 1px;
+        }
+        .header-decorator {
+            color: #006600;
+            margin: 0 5px;
         }
         .messages { 
             flex: 1; 
             overflow-y: auto; 
-            border: 1px solid #006600; 
+            border-left: 1px solid #006600;
+            border-right: 1px solid #006600;
             padding: 10px; 
             margin: 10px 0; 
-            background: #001100; 
+            background: #001100;
+            position: relative;
         }
-        .message { margin: 5px 0; }
+        .messages::before {
+            content: '╔════════════════════════════════════════════════════════════════════════════════╗';
+            display: block;
+            color: #006600;
+            margin-bottom: 5px;
+        }
+        .messages::after {
+            content: '╚════════════════════════════════════════════════════════════════════════════════╝';
+            display: block;
+            color: #006600;
+            margin-top: 5px;
+        }
+        .message { 
+            margin: 5px 0;
+            padding-left: 10px;
+            border-left: 1px dotted #004400;
+        }
         .message.system { color: #009900; }
         .message.task { color: #cccc00; }
         .message.user { color: #00cccc; }
-        .input-area { display: flex; gap: 10px; }
+        .input-area { 
+            display: flex; 
+            gap: 10px;
+            padding: 5px 0;
+        }
+        .input-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+        .input-prefix {
+            color: #00cc00;
+            margin-right: 5px;
+            font-weight: bold;
+        }
         #messageInput { 
             flex: 1; 
             background: #000; 
@@ -48,49 +93,66 @@
         #sendBtn { 
             background: #006600; 
             color: #00cc00; 
-            border: 1px solid #006600; 
-            padding: 10px 20px; 
+            border: 1px solid #00cc00;
+            padding: 8px 15px; 
             cursor: pointer; 
             font-family: monospace;
-            font-size: 18px;
-            text-transform: uppercase;
+            font-size: 16px;
             letter-spacing: 2px;
         }
         #sendBtn:hover { background: #009900; color: #00ff00; }
         .help { 
-            color: #006600; 
-            font-size: 16px; 
-            margin-top: 5px; 
-            padding: 5px 10px;
-            border: 1px solid #004400;
+            color: #009900; 
+            font-size: 14px; 
+            margin-top: 5px;
+            padding: 8px 12px;
+            border: 1px dashed #004400;
             background: #000900;
         }
         .help-title {
-            color: #009900;
+            color: #00cc00;
             margin-bottom: 5px;
+            font-weight: bold;
         }
         .help-command {
-            color: #00cc00;
-            margin-right: 15px;
+            color: #009900;
+            margin-right: 12px;
+        }
+        .help-command:hover {
+            color: #00ff00;
+            cursor: pointer;
         }
         .timestamp { color: #006600; margin-right: 10px; }
+        .divider {
+            color: #004400;
+            text-align: center;
+            letter-spacing: 3px;
+            margin: 5px 0;
+        }
+        .icon {
+            margin-right: 8px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <span>STALKnet</span>
-            <span id="userDisplay">user: guest</span>
-            <span id="statusDisplay">[*] Connecting...</span>
+            <span><span class="header-decorator">╔═</span>STALKnet<span class="header-decorator">═╗</span></span>
+            <span id="userDisplay">├ user: guest ┤</span>
+            <span id="statusDisplay"><span class="header-decorator">[</span>*<span class="header-decorator">]</span> Connecting...</span>
         </div>
         <div id="messages" class="messages"></div>
         <div class="input-area">
-            <input type="text" id="messageInput" placeholder="Type a message or /command..." autofocus>
-            <button id="sendBtn">SEND</button>
+            <div class="input-wrapper">
+                <span class="input-prefix">┌─┤</span>
+                <input type="text" id="messageInput" placeholder="Type a message or /command..." autofocus>
+                <span class="input-prefix">├─┐</span>
+            </div>
+            <button id="sendBtn">[ SEND ]</button>
         </div>
         <div class="help">
-            <div class="help-title">[system] Available commands:</div>
-            <div>
+            <div class="help-title">╭─ [system] Available commands:</div>
+            <div style="margin-top: 5px;">
                 <span class="help-command">/help</span>
                 <span class="help-command">/clear</span>
                 <span class="help-command">/nick</span>
@@ -99,8 +161,10 @@
                 <span class="help-command">/mock</span>
                 <span class="help-command">/mockmsg</span>
                 <span class="help-command">/mocktask</span>
+                <span class="help-command">│</span>
                 <span class="help-command">Ctrl+L: clear</span>
             </div>
+            <div style="margin-top: 5px; color: #006600;">╰──────────────────────────────────────────────────────────╯</div>
         </div>
     </div>
     <script src="app.js"></script>

@@ -10,7 +10,7 @@ let connected = false;
 
 setTimeout(() => {
     connected = true;
-    statusDisplay.textContent = "[*] Connected";
+    statusDisplay.innerHTML = "<span class=\"header-decorator\">[</span>●<span class=\"header-decorator\">]</span> Connected";
     addMessage("Welcome to STALKnet!", "system");
     addMessage("Type /help for available commands", "system");
 }, 1000);
@@ -20,7 +20,21 @@ function addMessage(text, type) {
     const div = document.createElement("div");
     div.className = "message " + type;
     const time = new Date().toLocaleTimeString();
-    div.innerHTML = "<span class=\"timestamp\">[" + time + "]</span> " + text;
+    
+    let prefix = "│ ";
+    let icon = "○";
+    
+    if (type === "system") {
+        icon = "●";
+        prefix = "│ ";
+    } else if (type === "task") {
+        icon = "◆";
+        prefix = "│ ";
+    } else if (type === "user") {
+        icon = "▸";
+    }
+    
+    div.innerHTML = prefix + "<span class=\"timestamp\">[" + time + "]</span> <span class=\"icon\">" + icon + "</span> " + text;
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
 }
@@ -40,10 +54,20 @@ function handleCommand(cmd) {
     const parts = cmd.trim().split(/\s+/);
     const command = parts[0].toLowerCase();
     const args = parts.slice(1);
-    
+
     switch(command) {
         case "/help":
-            addMessage("Commands: /help /clear /nick /connect /quit /mock /mockmsg /mocktask", "system");
+            addMessage("╭────────────────────────────────────────────╮", "system");
+            addMessage("│ Available commands:                        │", "system");
+            addMessage("│ /help     - Show this help                 │", "system");
+            addMessage("│ /clear    - Clear screen                   │", "system");
+            addMessage("│ /nick     - Change username                │", "system");
+            addMessage("│ /connect  - Connection status              │", "system");
+            addMessage("│ /quit     - Exit                           │", "system");
+            addMessage("│ /mock     - Send message                   │", "system");
+            addMessage("│ /mockmsg  - Random message                 │", "system");
+            addMessage("│ /mocktask - Task notification              │", "system");
+            addMessage("╰────────────────────────────────────────────╯", "system");
             break;
         case "/clear":
             messages.innerHTML = "";
@@ -55,12 +79,16 @@ function handleCommand(cmd) {
             } else {
                 const oldNick = username;
                 username = args[0];
-                userDisplay.textContent = "user: " + username;
-                addMessage("Username changed from " + oldNick + " to " + username, "system");
+                userDisplay.innerHTML = "├ user: " + username + " ┤";
+                addMessage("Username changed from '" + oldNick + "' to '" + username + "'", "system");
             }
             break;
         case "/connect":
-            addMessage("Connection status: " + (connected ? "Connected" : "Disconnected"), "system");
+            const statusIcon = connected ? "●" : "○";
+            const statusText = connected ? "Connected" : "Disconnected";
+            addMessage("╭────────────────────────────────────╮", "system");
+            addMessage("│ Connection status: " + statusIcon + " " + statusText, "system");
+            addMessage("╰────────────────────────────────────╯", "system");
             break;
         case "/quit":
             addMessage("Goodbye!", "system");
@@ -82,8 +110,10 @@ function handleCommand(cmd) {
             const tasks = ["Review code", "Update documentation", "Fix bug in auth", "Add unit tests"];
             const tidx = Math.floor(Math.random() * tasks.length);
             const tid = Math.floor(Math.random() * 100);
-            addMessage("Task #" + tid + " created: " + tasks[tidx], "task");
-            addMessage("Assigned to: " + username, "task");
+            addMessage("╭────────────────────────────────────────────╮", "task");
+            addMessage("◆ Task #" + tid + " created: " + tasks[tidx], "task");
+            addMessage("│ Assigned to: " + username, "task");
+            addMessage("╰────────────────────────────────────────────╯", "task");
             break;
         default:
             addMessage("Unknown command: " + command, "system");
