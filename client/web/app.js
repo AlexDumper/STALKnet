@@ -37,8 +37,6 @@ function addMessage(text, type, msgUsername = null, isReply = false, recipientUs
     
     const time = new Date().toLocaleTimeString();
     
-    let prefix = "";
-    let icon = "○";
     let usernameDisplay = "";
     
     // Отображение имени отправителя
@@ -51,15 +49,7 @@ function addMessage(text, type, msgUsername = null, isReply = false, recipientUs
         usernameDisplay += "<span class=\"username\" onclick=\"setReplyTo('" + recipientUsername + "')\">> [" + recipientUsername + "]</span> ";
     }
     
-    if (type === "system") {
-        icon = "●";
-    } else if (type === "task") {
-        icon = "◆";
-    } else if (type === "user") {
-        icon = isReply ? "⇔" : "▸";
-    }
-    
-    div.innerHTML = prefix + "<span class=\"timestamp\">[" + time + "]</span> <span class=\"icon\">" + icon + "</span> " + usernameDisplay + text;
+    div.innerHTML = "<span class=\"timestamp\">[" + time + "]</span> " + usernameDisplay + text;
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
 }
