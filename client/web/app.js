@@ -62,15 +62,16 @@ function handleCommand(cmd) {
     switch(command) {
         case "/help":
             addMessage("╭────────────────────────────────────────────╮", "system");
-            addMessage("│ Доступные команды: │", "system");
-            addMessage("│ /help - Показать эту справку │", "system");
-            addMessage("│ /clear - Очистить экран │", "system");
-            addMessage("│ /nick - Сменить имя пользователя │", "system");
-            addMessage("│ /connect - Статус подключения │", "system");
-            addMessage("│ /quit - Выйти │", "system");
-            addMessage("│ /mock - Отправить сообщение │", "system");
-            addMessage("│ /mockmsg - Случайное сообщение │", "system");
-            addMessage("│ /mocktask - Уведомление о задаче │", "system");
+            addMessage("│ Доступные команды:                         │", "system");
+            addMessage("│ /help     - Показать эту справку           │", "system");
+            addMessage("│ /clear    - Очистить экран                 │", "system");
+            addMessage("│ /nick     - Сменить имя пользователя       │", "system");
+            addMessage("│ /connect  - Статус подключения             │", "system");
+            addMessage("│ /quit     - Выйти                          │", "system");
+            addMessage("│ /mock     - Отправить сообщение            │", "system");
+            addMessage("│ /mockmsg  - Случайное сообщение            │", "system");
+            addMessage("│ /mocktask - Уведомление о задаче           │", "system");
+            addMessage("╰────────────────────────────────────────────╯", "system");
             break;
         case "/clear":
             messages.innerHTML = "";
