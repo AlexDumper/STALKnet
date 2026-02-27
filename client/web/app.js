@@ -11,8 +11,10 @@ let connected = false;
 setTimeout(() => {
     connected = true;
     statusDisplay.innerHTML = "<span class=\"header-decorator\">[</span>●<span class=\"header-decorator\">]</span> Подключено";
-    addMessage("Добро пожаловать в STALKnet!", "system");
-    addMessage("Введите /help для списка команд", "system");
+    addMessage("╭────────────────────────────────────────────╮", "system");
+    addMessage("│ Добро пожаловать в STALKnet!", "system");
+    addMessage("│ Введите /help для списка команд", "system");
+    addMessage("╰────────────────────────────────────────────╯", "system");
 }, 1000);
 
 function addMessage(text, type, msgUsername = null) {
@@ -21,7 +23,7 @@ function addMessage(text, type, msgUsername = null) {
     div.className = "message " + type;
     const time = new Date().toLocaleTimeString();
     
-    let prefix = "│ ";
+    let prefix = "";
     let icon = "○";
     let usernameDisplay = "";
     
@@ -32,10 +34,13 @@ function addMessage(text, type, msgUsername = null) {
     
     if (type === "system") {
         icon = "●";
+        prefix = "│ ";
     } else if (type === "task") {
         icon = "◆";
+        prefix = "│ ";
     } else if (type === "user") {
         icon = "▸";
+        prefix = "│ ";
     }
     
     div.innerHTML = prefix + "<span class=\"timestamp\">[" + time + "]</span> <span class=\"icon\">" + icon + "</span> " + usernameDisplay + text;
@@ -75,16 +80,22 @@ function handleCommand(cmd) {
             break;
         case "/clear":
             messages.innerHTML = "";
-            addMessage("Экран очищен", "system");
+            addMessage("╭────────────────────────────────────╮", "system");
+            addMessage("│ Экран очищен", "system");
+            addMessage("╰────────────────────────────────────╯", "system");
             break;
         case "/nick":
             if (args.length === 0) {
-                addMessage("Использование: /nick <имя>", "system");
+                addMessage("╭────────────────────────────────────╮", "system");
+                addMessage("│ Использование: /nick <имя>", "system");
+                addMessage("╰────────────────────────────────────╯", "system");
             } else {
                 const oldNick = username;
                 username = args[0];
                 userDisplay.innerHTML = "├ user: " + username + " ┤";
-                addMessage("Имя изменено с '" + oldNick + "' на '" + username + "'", "system");
+                addMessage("╭────────────────────────────────────╮", "system");
+                addMessage("│ Имя изменено с '" + oldNick + "' на '" + username + "'", "system");
+                addMessage("╰────────────────────────────────────╯", "system");
             }
             break;
         case "/connect":
@@ -95,11 +106,15 @@ function handleCommand(cmd) {
             addMessage("╰────────────────────────────────────╯", "system");
             break;
         case "/quit":
-            addMessage("До свидания!", "system");
+            addMessage("╭────────────────────────────────────╮", "system");
+            addMessage("│ До свидания!", "system");
+            addMessage("╰────────────────────────────────────╯", "system");
             break;
         case "/mock":
             if (args.length === 0) {
-                addMessage("Использование: /mock <текст>", "system");
+                addMessage("╭────────────────────────────────────╮", "system");
+                addMessage("│ Использование: /mock <текст>", "system");
+                addMessage("╰────────────────────────────────────╯", "system");
             } else {
                 addMessage(args.join(" "), "user", username);
             }
@@ -115,12 +130,14 @@ function handleCommand(cmd) {
             const tidx = Math.floor(Math.random() * tasks.length);
             const tid = Math.floor(Math.random() * 100);
             addMessage("╭────────────────────────────────────────────╮", "task");
-            addMessage("◆ Задача #" + tid + " создана: " + tasks[tidx], "task");
+            addMessage("│ Задача #" + tid + " создана: " + tasks[tidx], "task");
             addMessage("│ Назначена: " + username, "task");
             addMessage("╰────────────────────────────────────────────╯", "task");
             break;
         default:
-            addMessage("Неизвестная команда: " + command, "system");
+            addMessage("╭────────────────────────────────────╮", "system");
+            addMessage("│ Неизвестная команда: " + command, "system");
+            addMessage("╰────────────────────────────────────╯", "system");
     }
 }
 
@@ -133,6 +150,8 @@ document.addEventListener("keydown", (e) => {
     if (e.ctrlKey && e.key === "l") {
         e.preventDefault();
         messages.innerHTML = "";
-        addMessage("Экран очищен", "system");
+        addMessage("╭────────────────────────────────────╮", "system");
+        addMessage("│ Экран очищен", "system");
+        addMessage("╰────────────────────────────────────╯", "system");
     }
 });
