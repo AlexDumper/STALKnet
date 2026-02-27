@@ -186,42 +186,36 @@ function handleCommand(cmd) {
                 {
                     id: 42,
                     title: "Найти артефакт 'Медуза'",
-                    description: "В Янтарном озере замечен редкий артефакт",
                     client: "Сахаров",
                     reward: "1500 RU, артефакт 'Кристалл'"
                 },
                 {
                     id: 17,
                     title: "Уничтожить гнездо кровососов",
-                    description: "Сталкеры сообщают о логове в болотах",
                     client: "Сидорович",
                     reward: "2000 RU, аптечки x5"
                 },
                 {
                     id: 89,
                     title: "Доставить контейнер с образцами",
-                    description: "Забрать у новичков на Кордоне",
                     client: "Волк",
                     reward: "1000 RU, патроны 5.45x39"
                 },
                 {
                     id: 56,
                     title: "Исследовать аномалию 'Трамплин'",
-                    description: "Зафиксирована аномальная активность",
                     client: "Академик Круглов",
                     reward: "2500 RU, детектор 'Медведь'"
                 },
                 {
                     id: 33,
                     title: "Найти схрон с оружием",
-                    description: "Координаты: свалка, старый ангар",
                     client: "Меченый",
                     reward: "Оружие на выбор"
                 },
                 {
                     id: 71,
                     title: "Ликвидировать бандгруппу",
-                    description: "Бандиты терроризируют новичков",
                     client: "Долг",
                     reward: "1800 RU, броня 'Берилл'"
                 }
@@ -229,8 +223,8 @@ function handleCommand(cmd) {
             const tidx = Math.floor(Math.random() * tasks.length);
             const task = tasks[tidx];
             addMessage("╭────────────────────────────────────────────╮", "task");
-            addMessage("│ Задача #" + task.id + ": " + task.title, "task");
-            addMessage("│ Описание: " + task.description, "task");
+            addMessage("│ Задание #" + task.id, "task");
+            addMessage("│ " + task.title, "task");
             addMessage("│ Заказчик: " + task.client, "task");
             addMessage("│ Награда: " + task.reward, "task");
             addMessage("╰────────────────────────────────────────────╯", "task");
