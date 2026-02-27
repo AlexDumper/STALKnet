@@ -13,6 +13,9 @@ let messageHistory = [];
 let historyIndex = -1;
 let currentInput = "";
 
+// Ответ на сообщения
+let replyToUser = null;  // ник получателя
+
 setTimeout(() => {
     connected = true;
     statusDisplay.innerHTML = "<span class=\"header-decorator\">[</span>●<span class=\"header-decorator\">]</span> Подключено";
@@ -31,10 +34,17 @@ function addMessage(text, type, msgUsername = null) {
     let prefix = "";
     let icon = "○";
     let usernameDisplay = "";
+    let isReply = false;
+    
+    // Проверяем, является ли сообщение ответом (содержит " > ")
+    if (text.includes(" > ")) {
+        isReply = true;
+        icon = "↗";
+    }
     
     // Отображение имени отправителя
     if (msgUsername) {
-        usernameDisplay = "<span class=\"username\">[" + msgUsername + "]</span> ";
+        usernameDisplay = "<span class=\"username\" onclick=\"setReplyTo('" + msgUsername + "')\">[" + msgUsername + "]</span> ";
     }
     
     if (type === "system") {
@@ -42,7 +52,7 @@ function addMessage(text, type, msgUsername = null) {
     } else if (type === "task") {
         icon = "◆";
     } else if (type === "user") {
-        icon = "▸";
+        icon = isReply ? "↗" : "▸";
     }
     
     div.innerHTML = prefix + "<span class=\"timestamp\">[" + time + "]</span> <span class=\"icon\">" + icon + "</span> " + usernameDisplay + text;
@@ -59,12 +69,30 @@ function sendMessage() {
     historyIndex = messageHistory.length;
     
     input.value = "";
+    
+    // Формируем сообщение с ответом если нужно
+    let finalText = text;
+    if (replyToUser) {
+        finalText = text + " > [" + replyToUser + "]";
+        replyToUser = null;  // сбрасываем после отправки
+    }
+    
     if (text.startsWith("/")) {
         handleCommand(text);
     } else {
-        addMessage(text, "user", username);
+        addMessage(finalText, "user", username);
     }
 }
+
+// Функция для установки получателя ответа
+function setReplyTo(nick) {
+    replyToUser = nick;
+    input.value = nick + ", ";
+    input.focus();
+}
+
+// Делаем функцию доступной глобально для onclick
+window.setReplyTo = setReplyTo;
 
 function handleCommand(cmd) {
     const parts = cmd.trim().split(/\s+/);
