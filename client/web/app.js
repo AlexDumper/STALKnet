@@ -135,9 +135,9 @@ function handleCommand(cmd) {
             break;
         case "/takemocktask":
             const taskId = Math.floor(Math.random() * 100);
-            addMessage("╭────────────────────────────────────────────╮", "system");
-            addMessage("│ " + username + " взял задание #" + taskId, "system");
-            addMessage("╰────────────────────────────────────────────╯", "system");
+            addMessage("╭────────────────────────────────────────────╮", "task");
+            addMessage("│ " + username + " взял задание #" + taskId, "task");
+            addMessage("╰────────────────────────────────────────────╯", "task");
             break;
         case "/mocktask":
             const tasks = [
