@@ -25,7 +25,7 @@ setTimeout(() => {
     addMessage("╰────────────────────────────────────────────╯", "system");
 }, 1000);
 
-function addMessage(text, type, msgUsername = null, isReply = false) {
+function addMessage(text, type, msgUsername = null, isReply = false, recipientUsername = null) {
     type = type || "system";
     const div = document.createElement("div");
     div.className = "message " + type;
@@ -40,17 +40,6 @@ function addMessage(text, type, msgUsername = null, isReply = false) {
     let prefix = "";
     let icon = "○";
     let usernameDisplay = "";
-    let messageText = text;
-    
-    // Если это ответ, извлекаем ник получателя из текста
-    let recipientUser = null;
-    if (isReply && text.match(/^\[[^\]]+\]/)) {
-        const match = text.match(/^\[([^\]]+)\]\s*(.*)/);
-        if (match) {
-            recipientUser = match[1];
-            messageText = match[2];
-        }
-    }
     
     // Отображение имени отправителя
     if (msgUsername) {
@@ -58,8 +47,8 @@ function addMessage(text, type, msgUsername = null, isReply = false) {
     }
     
     // Отображение имени получателя (для ответов)
-    if (recipientUser) {
-        usernameDisplay += "<span class=\"username\" onclick=\"setReplyTo('" + recipientUser + "')\">[" + recipientUser + "]</span> ";
+    if (recipientUsername) {
+        usernameDisplay += "<span class=\"username\" onclick=\"setReplyTo('" + recipientUsername + "')\">[" + recipientUsername + "]</span> ";
     }
     
     if (type === "system") {
@@ -70,7 +59,7 @@ function addMessage(text, type, msgUsername = null, isReply = false) {
         icon = isReply ? "⇔" : "▸";
     }
     
-    div.innerHTML = prefix + "<span class=\"timestamp\">[" + time + "]</span> <span class=\"icon\">" + icon + "</span> " + usernameDisplay + messageText;
+    div.innerHTML = prefix + "<span class=\"timestamp\">[" + time + "]</span> <span class=\"icon\">" + icon + "</span> " + usernameDisplay + text;
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
 }
@@ -86,18 +75,18 @@ function sendMessage() {
     input.value = "";
     
     // Формируем сообщение с ответом если нужно
-    let finalText = text;
     let isReply = false;
+    let recipientUser = null;
     if (replyToUser) {
         isReply = true;
-        finalText = "[" + replyToUser + "] " + text;
+        recipientUser = replyToUser;
         replyToUser = null;  // сбрасываем после отправки
     }
     
     if (text.startsWith("/")) {
         handleCommand(text);
     } else {
-        addMessage(finalText, "user", username, isReply);
+        addMessage(text, "user", username, isReply, recipientUser);
     }
 }
 
