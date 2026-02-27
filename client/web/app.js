@@ -49,7 +49,7 @@ function addMessage(text, type, msgUsername = null, isReply = false, recipientUs
         usernameDisplay += "<span class=\"username\" onclick=\"setReplyTo('" + recipientUsername + "')\">> [" + recipientUsername + "]</span> ";
     }
     
-    div.innerHTML = "<span class=\"timestamp\">[" + time + "]</span> " + usernameDisplay + text;
+    div.innerHTML = "<span class=\"timestamp\">[" + time + "]</span>" + usernameDisplay + text;
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
 }
