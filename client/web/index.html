@@ -18,7 +18,6 @@
             background: #001100; 
             color: #00cc00; 
             padding: 10px; 
-            font-weight: bold; 
             display: flex; 
             justify-content: space-between;
             border: 1px solid #006600;
@@ -52,14 +51,28 @@
             border: 1px solid #006600; 
             padding: 10px 20px; 
             cursor: pointer; 
-            font-weight: bold;
             font-family: monospace;
             font-size: 18px;
             text-transform: uppercase;
             letter-spacing: 2px;
         }
         #sendBtn:hover { background: #009900; color: #00ff00; }
-        .help { color: #006600; font-size: 14px; margin-top: 5px; }
+        .help { 
+            color: #006600; 
+            font-size: 16px; 
+            margin-top: 5px; 
+            padding: 5px 10px;
+            border: 1px solid #004400;
+            background: #000900;
+        }
+        .help-title {
+            color: #009900;
+            margin-bottom: 5px;
+        }
+        .help-command {
+            color: #00cc00;
+            margin-right: 15px;
+        }
         .timestamp { color: #006600; margin-right: 10px; }
     </style>
 </head>
@@ -75,7 +88,20 @@
             <input type="text" id="messageInput" placeholder="Type a message or /command..." autofocus>
             <button id="sendBtn">SEND</button>
         </div>
-        <div class="help">Commands: /help /clear /nick /connect /quit /mock /mockmsg /mocktask | Ctrl+L: clear</div>
+        <div class="help">
+            <div class="help-title">[system] Available commands:</div>
+            <div>
+                <span class="help-command">/help</span>
+                <span class="help-command">/clear</span>
+                <span class="help-command">/nick</span>
+                <span class="help-command">/connect</span>
+                <span class="help-command">/quit</span>
+                <span class="help-command">/mock</span>
+                <span class="help-command">/mockmsg</span>
+                <span class="help-command">/mocktask</span>
+                <span class="help-command">Ctrl+L: clear</span>
+            </div>
+        </div>
     </div>
     <script src="app.js"></script>
 </body>
