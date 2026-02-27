@@ -25,22 +25,21 @@ setTimeout(() => {
     addMessage("╰────────────────────────────────────────────╯", "system");
 }, 1000);
 
-function addMessage(text, type, msgUsername = null) {
+function addMessage(text, type, msgUsername = null, isReply = false) {
     type = type || "system";
     const div = document.createElement("div");
     div.className = "message " + type;
+    
+    // Добавляем класс reply если это ответ
+    if (isReply && type === "user") {
+        div.className += " reply";
+    }
+    
     const time = new Date().toLocaleTimeString();
     
     let prefix = "";
     let icon = "○";
     let usernameDisplay = "";
-    let isReply = false;
-    
-    // Проверяем, является ли сообщение ответом (содержит " > ")
-    if (text.includes(" > ")) {
-        isReply = true;
-        icon = "↗";
-    }
     
     // Отображение имени отправителя
     if (msgUsername) {
@@ -72,22 +71,24 @@ function sendMessage() {
     
     // Формируем сообщение с ответом если нужно
     let finalText = text;
+    let isReply = false;
     if (replyToUser) {
-        finalText = text + " > [" + replyToUser + "]";
+        isReply = true;
+        finalText = "[" + replyToUser + "] " + text;
         replyToUser = null;  // сбрасываем после отправки
     }
     
     if (text.startsWith("/")) {
         handleCommand(text);
     } else {
-        addMessage(finalText, "user", username);
+        addMessage(finalText, "user", username, isReply);
     }
 }
 
 // Функция для установки получателя ответа
 function setReplyTo(nick) {
     replyToUser = nick;
-    input.value = nick + ", ";
+    input.value = "";
     input.focus();
 }
 
