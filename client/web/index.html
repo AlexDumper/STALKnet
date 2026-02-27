@@ -77,30 +77,28 @@
         }
         .input-prefix {
             color: #00cc00;
-            margin-right: 5px;
             font-weight: bold;
         }
         #messageInput { 
             flex: 1; 
             background: #000; 
-            border: 1px solid #006600; 
+            border: none;
             color: #00cc00; 
             padding: 10px; 
             font-size: 18px;
             font-family: monospace;
         }
-        #messageInput:focus { outline: none; border-color: #009900; }
+        #messageInput:focus { outline: none; }
         #sendBtn { 
-            background: #006600; 
+            background: transparent;
             color: #00cc00; 
-            padding: 10px 20px; 
+            padding: 10px 15px; 
             cursor: pointer; 
             font-family: monospace;
             font-size: 16px;
-            letter-spacing: 2px;
             border: none;
         }
-        #sendBtn:hover { background: #009900; color: #00ff00; }
+        #sendBtn:hover { color: #00ff00; }
         .timestamp { color: #006600; margin-right: 10px; }
         .divider {
             color: #004400;
@@ -128,11 +126,11 @@
         <div id="messages" class="messages"></div>
         <div class="input-area">
             <div class="input-wrapper">
-                <span class="input-prefix">┌─┤</span>
+                <span class="input-prefix">[</span>
                 <input type="text" id="messageInput" placeholder="Введите сообщение или /команду..." autofocus>
-                <span class="input-prefix">├─┐</span>
+                <span class="input-prefix">]</span>
             </div>
-            <button id="sendBtn">SEND</button>
+            <button id="sendBtn">[SEND]</button>
         </div>
     </div>
     <script src="app.js"></script>
