@@ -55,32 +55,98 @@
 
 ## Клиенты
 
+### Авторизация
+
+STALKnet использует **централизованную систему авторизации** через Auth Service.
+
+**Процесс авторизации:**
+
+1. Пользователь запускает клиент в режиме **Guest**
+2. Доступна только команда `/help` и начало авторизации
+3. Отправка сообщений заблокирована до авторизации
+
+**Команды авторизации:**
+
+| Команда | Описание |
+|---------|----------|
+| `/auth` | Начать процесс авторизации/регистрации |
+| `/y` | Подтвердить создание профиля |
+| `/n` | Отменить создание профиля |
+| `/cancel` | Отменить текущий процесс авторизации |
+| `/login <user> <pass>` | Быстрый вход для существующего пользователя |
+| `/logout` | Выйти из системы |
+
+**Поток регистрации нового пользователя:**
+
+```
+1. /auth
+   → "Enter your stalker name:"
+
+2. Введите имя (например: stalker1)
+   → Проверка доступности имени
+   → "Create profile? Type /y to confirm or /n to cancel."
+
+3. /y
+   → "Enter password for: stalker1"
+
+4. Введите пароль
+   → Создание профиля в PostgreSQL
+   → Создание сессии в Redis
+   → "Welcome, stalker1! Your session ID: abc123..."
+```
+
+**После авторизации:**
+- Session ID отображается в шапке интерфейса
+- Доступна отправка сообщений
+- Доступны все команды (`/mock`, `/nick`, `/mocktask`, и др.)
+
 ### TUI Клиент (Консольный)
 
 Запуск:
 ```bash
 cd client
 stalknet_client.exe
+# или
+go run main.go
 ```
 
 **Команды TUI:**
-| Команда           | Описание             |
-|-------------------|----------------------|
-| `/help`           | Показать команды     |
-| `/clear`          | Очистить экран       |
-| `/nick <name>`    | Сменить имя          |
-| `/connect`        | Статус подключения   |
-| `/quit`           | Выйти                |
-| `/mock <text>`    | Отправить сообщение  |
-| `/mockmsg`        | Случайное сообщение  |
-| `/mocktask`       | Уведомление о задаче |
-| `/scroll up/down` | Прокрутка            |
+
+| Команда | Описание |
+|---------|----------|
+| `/help` | Показать команды |
+| `/clear` | Очистить экран |
+| `/connect` | Статус подключения |
+| `/quit` | Выйти |
+| `/auth` | Начать авторизацию |
+| `/login <user> <pass>` | Быстрый вход |
+| `/logout` | Выйти из системы |
+| `/nick <name>` | Сменить имя (после авторизации) |
+| `/mock <text>` | Отправить сообщение (после авторизации) |
+| `/mockmsg` | Случайное сообщение (после авторизации) |
+| `/mocktask` | Уведомление о задаче (после авторизации) |
+| `/scroll up/down` | Прокрутка |
 
 **Управление:**
 - `Enter` — Отправить
 - `Ctrl+C` — Выход
 - `Ctrl+L` — Очистить экран
 - `PgUp/PgDn` — Прокрутка
+
+**Интерфейс:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  STALKnet    user: stalker1 | SID: abc123...    ● Connected │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  [12:00:00] <system> Welcome to STALKnet!                   │
+│  [12:00:01] <system> Type /help for available commands      │
+│  [12:01:15] <stalker1> Привет!                              │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│ > _                                                         │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ### Веб-Клиент (Browser)
 
@@ -95,21 +161,40 @@ go run main_web.go
 Открыть в браузере: **http://localhost:8080**
 
 **Команды Веб:**
-| Команда | Описание                    |
-|---------|-----------------------------|
-| `/help`        | Показать команды     |
-| `/clear`       | Очистить экран       |
-| `/nick <name>` | Сменить имя          |
-| `/connect`     | Статус подключения   |
-| `/quit`        | Выйти                |
-| `/mock <text>` | Отправить сообщение  |
-| `/mockmsg`     | Случайное сообщение  |
-| `/mocktask`    | Уведомление о задаче |
+
+| Команда | Описание |
+|---------|----------|
+| `/help` | Показать команды |
+| `/clear` | Очистить экран |
+| `/connect` | Статус подключения |
+| `/quit` | Выйти |
+| `/auth` | Начать авторизацию |
+| `/login <user> <pass>` | Быстрый вход |
+| `/logout` | Выйти из системы |
+| `/nick <name>` | Сменить имя (после авторизации) |
+| `/mock <text>` | Отправить сообщение (после авторизации) |
+| `/mockmsg` | Случайное сообщение (после авторизации) |
+| `/mocktask` | Уведомление о задаче (после авторизации) |
 
 **Управление:**
 - `Enter` — Отправить
 - `Ctrl+L` — Очистить экран
 - Кнопка `SEND` — Отправить сообщение
+- Стрелки `Up/Down` — История команд
+
+**Интерфейс:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ☢ STALKnet  ├ user: stalker1 | SID: abc123... ┤  ● Подключено│
+├─────────────────────────────────────────────────────────────┤
+│  [12:00:00] <system> Добро пожаловать в STALKnet!           │
+│  [12:00:01] <system> Введите /help для списка команд        │
+│  [12:01:15] <stalker1> Привет!                              │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│  [ > Введите сообщение или /команду...            ] [SEND]  │
+└─────────────────────────────────────────────────────────────┘
+```
 
 **Настройка порта:**
 ```bash
@@ -119,8 +204,10 @@ stalknet_web.exe
 
 ## Быстрый старт
 
+### Вариант 1: Запуск через Docker (рекомендуется)
+
 ```bash
-# Запуск всех сервисов
+# Запуск всех сервисов (PostgreSQL, Redis, Gateway, Auth, и др.)
 docker-compose up -d
 
 # Просмотр логов
@@ -130,42 +217,158 @@ docker-compose logs -f
 docker-compose down
 ```
 
+После запуска:
+- **Web-клиент**: http://localhost:8080
+- **Auth Service**: http://localhost:8081
+- **PostgreSQL**: localhost:5432
+- **Redis**: localhost:6379
+
+### Вариант 2: Локальный запуск (для разработки)
+
+Требуется установленные PostgreSQL 15 и Redis 7.
+
+```bash
+# 1. Инициализация БД (выполнить один раз)
+psql -U postgres -f deploy/postgres/init.sql
+
+# 2. Запуск Auth Service
+cd services/auth
+go run main.go
+
+# 3. Запуск TUI клиента (в новом терминале)
+cd client
+go run main.go
+
+# 4. Запуск Web-клиента (в новом терминале)
+cd client
+go run main_web.go
+```
+
+### Переменные окружения
+
+| Переменная | Описание | По умолчанию |
+|------------|----------|--------------|
+| `DB_HOST` | Хост PostgreSQL | `localhost` |
+| `DB_PORT` | Порт PostgreSQL | `5432` |
+| `DB_USER` | Пользователь БД | `stalknet` |
+| `DB_PASSWORD` | Пароль БД | `stalknet_secret` |
+| `DB_NAME` | Имя БД | `stalknet` |
+| `REDIS_HOST` | Хост Redis | `localhost` |
+| `REDIS_PORT` | Порт Redis | `6379` |
+| `JWT_SECRET` | Секрет JWT токенов | `your-secret-key` |
+| `STALKNET_AUTH_URL` | URL Auth Service | `http://localhost:8081` |
+| `STALKNET_WEB_PORT` | Порт Web-клиента | `8080` |
+
 ## Структура проекта
 
 ```
 STALKnet/
-├── gateway/              # API Gateway
+├── gateway/                    # API Gateway
+│   ├── handlers/              # Обработчики запросов
+│   ├── middleware/            # JWT middleware
+│   ├── config/                # Конфигурация
+│   ├── main.go                # Точка входа
+│   └── Dockerfile
+│
 ├── services/
-│   ├── auth/            # Auth Service
-│   ├── user/            # User Service
-│   ├── chat/            # Chat Service
-│   ├── task/            # Task Service
-│   └── notification/    # Notification Service
-├── client/              # Клиенты
-│   ├── ui/              # TUI компоненты
-│   ├── web/             # Веб-клиент (HTML/CSS/JS)
-│   ├── main.go          # TUI клиент
-│   ├── main_web.go      # Веб-сервер
-│   ├── stalknet_client.exe  # TUI бинарник
-│   └── stalknet_web.exe     # Веб-сервер бинарник
-├── pkg/                 # Общие библиотеки
-├── deploy/              # Конфигурация БД
-├── docker-compose.yml   # Docker конфигурация
-└── README.md            # Этот файл
+│   ├── auth/                  # Auth Service (порт 8081)
+│   │   ├── handlers/          # HTTP обработчики
+│   │   │   ├── auth.go        # Register, Login, Logout
+│   │   │   └── handlers.go    # Инициализация роутера
+│   │   ├── repository/        # Репозиторий
+│   │   │   └── repository.go  # PostgreSQL + Redis
+│   │   ├── models/            # Модели данных
+│   │   │   └── models.go
+│   │   ├── main.go            # Точка входа
+│   │   ├── go.mod
+│   │   └── Dockerfile
+│   │
+│   ├── user/                  # User Service (порт 8082)
+│   ├── chat/                  # Chat Service (порт 8083)
+│   ├── task/                  # Task Service (порт 8084)
+│   └── notification/          # Notification Service (порт 8085)
+│
+├── client/                    # Клиенты
+│   ├── auth/                  # Модуль авторизации
+│   │   └── manager.go         # HTTP-клиент к Auth Service
+│   │
+│   ├── ui/                    # TUI компоненты
+│   │   ├── app.go             # Основное приложение
+│   │   ├── commands.go        # Обработчик команд
+│   │   ├── header.go          # Шапка с Session ID
+│   │   ├── input.go           # Поле ввода
+│   │   ├── messages.go        # Область сообщений
+│   │   └── styles.go          # Стили
+│   │
+│   ├── web/                   # Веб-клиент
+│   │   ├── index.html         # HTML шаблон
+│   │   └── app.js             # JavaScript логика
+│   │
+│   ├── main.go                # TUI клиент
+│   ├── main_web.go            # Веб-сервер
+│   ├── go.mod
+│   └── Dockerfile
+│
+├── pkg/                       # Общие библиотеки
+│
+├── deploy/                    # Конфигурация БД
+│   └── postgres/
+│       └── init.sql           # SQL скрипт инициализации
+│
+├── docker-compose.yml         # Docker конфигурация
+├── .env                       # Переменные окружения
+└── README.md
 ```
 
 ## API Endpoints
 
-### Auth Service
-- `POST /api/auth/register` — Регистрация
-- `POST /api/auth/login` — Вход
+### Auth Service (порт 8081)
 
-### Chat Service
+| Метод | Endpoint | Описание |
+|-------|----------|----------|
+| `POST` | `/api/auth/register` | Регистрация нового пользователя |
+| `POST` | `/api/auth/login` | Вход (получение JWT токенов) |
+| `POST` | `/api/auth/logout` | Выход (инвалидация сессии) |
+| `POST` | `/api/auth/refresh` | Обновление access токена |
+| `POST` | `/api/auth/validate` | Проверка валидности токена |
+| `GET` | `/api/auth/session` | Информация о текущей сессии |
+| `GET` | `/health` | Проверка здоровья сервиса |
+
+**Пример запроса регистрации:**
+```json
+POST /api/auth/register
+{
+  "username": "stalker1",
+  "password": "secret123",
+  "email": "stalker@zone.com"
+}
+```
+
+**Пример запроса входа:**
+```json
+POST /api/auth/login
+{
+  "username": "stalker1",
+  "password": "secret123"
+}
+
+// Ответ:
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+  "expires_in": 900,
+  "user_id": 1,
+  "username": "stalker1",
+  "session_id": "abc123def456..."
+}
+```
+
+### Chat Service (порт 8083)
 - `WS /ws/chat` — WebSocket соединение для чата
 - `GET /api/chat/rooms` — Список комнат
 - `POST /api/chat/rooms` — Создать комнату
 
-### Task Service
+### Task Service (порт 8084)
 - `GET /api/tasks` — Список задач
 - `POST /api/tasks` — Создать задачу
 - `PUT /api/tasks/:id/complete` — Выполнить задачу

@@ -1,22 +1,26 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/stalknet/services/auth/repository"
 )
 
 type AuthHandler struct {
+	repo      *repository.AuthRepository
 	jwtSecret string
-	// repository будет добавлен
 }
 
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required,min=6"`
+	Username string `json:"username" binding:"required,min=3,max=50"`
+	Password string `json:"password" binding:"required,min=6,max=100"`
 	Email    string `json:"email"`
 }
 
@@ -29,19 +33,46 @@ type TokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int64  `json:"expires_in"`
+	UserID       int    `json:"user_id"`
+	Username     string `json:"username"`
+	SessionID    string `json:"session_id"`
 }
 
-func NewAuthHandler(dbHost, dbPort, dbUser, dbPassword, dbName, redisHost, redisPort, jwtSecret string) *AuthHandler {
-	// Инициализация подключений будет добавлена
+type ValidateRequest struct {
+	Token string `json:"token" binding:"required"`
+}
+
+type ValidateResponse struct {
+	Valid    bool   `json:"valid"`
+	UserID   int    `json:"user_id"`
+	Username string `json:"username"`
+}
+
+func NewAuthHandler(repo *repository.AuthRepository, jwtSecret string) *AuthHandler {
 	return &AuthHandler{
+		repo:      repo,
 		jwtSecret: jwtSecret,
 	}
 }
 
+// Register регистрирует нового пользователя
 func (h *AuthHandler) Register(c *gin.Context) {
+	ctx := context.Background()
+
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Проверяем, существует ли пользователь
+	existingUser, err := h.repo.GetUserByUsername(ctx, req.Username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	if existingUser != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "Username already taken"})
 		return
 	}
 
@@ -52,50 +83,234 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// Сохранение пользователя в БД будет добавлено
-	_ = hashedPassword
+	// Создаём пользователя
+	userID, err := h.repo.CreateUser(ctx, req.Username, string(hashedPassword), req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		return
+	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully"})
+	c.JSON(http.StatusCreated, gin.H{
+		"message":  "User registered successfully",
+		"user_id":  userID,
+		"username": req.Username,
+	})
 }
 
+// Login авторизует пользователя и выдаёт токены
 func (h *AuthHandler) Login(c *gin.Context) {
+	ctx := context.Background()
+
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Проверка пользователя в БД будет добавлена
+	// Находим пользователя
+	user, err := h.repo.GetUserByUsername(ctx, req.Username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		return
+	}
 
-	// Генерация токенов
-	accessToken, refreshToken, err := h.generateTokens(1) // user_id
+	// Проверяем пароль
+	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		return
+	}
+
+	// Генерируем токены
+	accessToken, refreshToken, err := h.generateTokens(user.ID, user.Username)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
 		return
 	}
 
+	// Создаём сессию
+	session := &repository.Session{
+		UserID:       user.ID,
+		Username:     user.Username,
+		Token:        accessToken,
+		RefreshToken: refreshToken,
+		ExpiresAt:    time.Now().Add(15 * time.Minute),
+		CreatedAt:    time.Now(),
+	}
+
+	err = h.repo.CreateSession(ctx, session)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+		return
+	}
+
+	// Обновляем статус пользователя
+	_ = h.repo.UpdateUserStatus(ctx, user.ID, "online")
+
 	c.JSON(http.StatusOK, TokenResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    int64(15 * time.Minute),
+		UserID:       user.ID,
+		Username:     user.Username,
+		SessionID:    accessToken[:16], // Короткий ID сессии
 	})
 }
 
+// Logout завершает сессию
 func (h *AuthHandler) Logout(c *gin.Context) {
-	// Инвалидация токена в Redis будет добавлена
+	ctx := context.Background()
+
+	// Получаем токен из заголовка
+	token := c.GetHeader("Authorization")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Token required"})
+		return
+	}
+
+	// Удаляем префикс "Bearer " если есть
+	if len(token) > 7 && token[:7] == "Bearer " {
+		token = token[7:]
+	}
+
+	err := h.repo.DeleteSession(ctx, token)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to logout"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
 
+// Refresh обновляет access токен
 func (h *AuthHandler) Refresh(c *gin.Context) {
-	// Обновление токена будет добавлено
-	c.JSON(http.StatusOK, gin.H{"message": "Token refreshed"})
+	ctx := context.Background()
+
+	var req struct {
+		RefreshToken string `json:"refresh_token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Находим сессию по refresh токену
+	session, err := h.repo.GetSessionByRefreshToken(ctx, req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate token"})
+		return
+	}
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
+		return
+	}
+
+	// Проверяем, не истёк ли access токен ещё
+	if time.Now().Before(session.ExpiresAt) {
+		c.JSON(http.StatusOK, TokenResponse{
+			AccessToken:  session.Token,
+			RefreshToken: session.RefreshToken,
+			ExpiresIn:    int64(time.Until(session.ExpiresAt).Seconds()),
+			UserID:       session.UserID,
+			Username:     session.Username,
+			SessionID:    session.Token[:16],
+		})
+		return
+	}
+
+	// Генерируем новые токены
+	newAccessToken, _, err := h.generateTokens(session.UserID, session.Username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate tokens"})
+		return
+	}
+
+	// Обновляем сессию
+	session.Token = newAccessToken
+	session.ExpiresAt = time.Now().Add(15 * time.Minute)
+	_ = h.repo.CreateSession(ctx, session)
+
+	c.JSON(http.StatusOK, TokenResponse{
+		AccessToken:  newAccessToken,
+		RefreshToken: session.RefreshToken,
+		ExpiresIn:    int64(15 * time.Minute),
+		UserID:       session.UserID,
+		Username:     session.Username,
+		SessionID:    newAccessToken[:16],
+	})
 }
 
-func (h *AuthHandler) generateTokens(userID int) (string, string, error) {
-	// Access token
+// Validate проверяет валидность токена
+func (h *AuthHandler) Validate(c *gin.Context) {
+	ctx := context.Background()
+
+	var req ValidateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	session, err := h.repo.GetSession(ctx, req.Token)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate token"})
+		return
+	}
+
+	if session == nil || time.Now().After(session.ExpiresAt) {
+		c.JSON(http.StatusOK, ValidateResponse{Valid: false})
+		return
+	}
+
+	c.JSON(http.StatusOK, ValidateResponse{
+		Valid:    true,
+		UserID:   session.UserID,
+		Username: session.Username,
+	})
+}
+
+// GetSessionInfo возвращает информацию о сессии
+func (h *AuthHandler) GetSessionInfo(c *gin.Context) {
+	ctx := context.Background()
+
+	token := c.GetHeader("Authorization")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Token required"})
+		return
+	}
+
+	if len(token) > 7 && token[:7] == "Bearer " {
+		token = token[7:]
+	}
+
+	session, err := h.repo.GetSession(ctx, token)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get session"})
+		return
+	}
+	if session == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid session"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"session_id": session.Token[:16],
+		"user_id":    session.UserID,
+		"username":   session.Username,
+		"expires_at": session.ExpiresAt,
+	})
+}
+
+func (h *AuthHandler) generateTokens(userID int, username string) (string, string, error) {
+	// Access token (15 минут)
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": userID,
-		"exp":     time.Now().Add(15 * time.Minute).Unix(),
+		"user_id":  userID,
+		"username": username,
+		"exp":      time.Now().Add(15 * time.Minute).Unix(),
+		"iat":      time.Now().Unix(),
 	})
 
 	accessTokenString, err := accessToken.SignedString([]byte(h.jwtSecret))
@@ -103,10 +318,13 @@ func (h *AuthHandler) generateTokens(userID int) (string, string, error) {
 		return "", "", err
 	}
 
-	// Refresh token
+	// Refresh token (7 дней)
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": userID,
-		"exp":     time.Now().Add(7 * 24 * time.Hour).Unix(),
+		"user_id":  userID,
+		"username": username,
+		"exp":      time.Now().Add(7 * 24 * time.Hour).Unix(),
+		"iat":      time.Now().Unix(),
+		"type":     "refresh",
 	})
 
 	refreshTokenString, err := refreshToken.SignedString([]byte(h.jwtSecret))
@@ -115,4 +333,13 @@ func (h *AuthHandler) generateTokens(userID int) (string, string, error) {
 	}
 
 	return accessTokenString, refreshTokenString, nil
+}
+
+// GetJWTSecret возвращает секретный ключ из переменных окружения
+func GetJWTSecret() string {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "your-secret-key-change-in-production"
+	}
+	return secret
 }

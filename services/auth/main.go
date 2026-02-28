@@ -23,6 +23,32 @@ func main() {
 	redisPort := os.Getenv("REDIS_PORT")
 	jwtSecret := os.Getenv("JWT_SECRET")
 
+	// Значения по умолчанию
+	if dbHost == "" {
+		dbHost = "localhost"
+	}
+	if dbPort == "" {
+		dbPort = "5432"
+	}
+	if dbUser == "" {
+		dbUser = "stalknet"
+	}
+	if dbPassword == "" {
+		dbPassword = "stalknet_secret"
+	}
+	if dbName == "" {
+		dbName = "stalknet"
+	}
+	if redisHost == "" {
+		redisHost = "localhost"
+	}
+	if redisPort == "" {
+		redisPort = "6379"
+	}
+	if jwtSecret == "" {
+		jwtSecret = "your-secret-key-change-in-production"
+	}
+
 	router := handlers.SetupRouter(
 		dbHost, dbPort, dbUser, dbPassword, dbName,
 		redisHost, redisPort,

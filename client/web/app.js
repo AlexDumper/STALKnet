@@ -4,8 +4,21 @@ const input = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 const statusDisplay = document.getElementById("statusDisplay");
 const userDisplay = document.getElementById("userDisplay");
+const sessionDisplay = document.getElementById("sessionDisplay");
+
+// Состояния авторизации
+const AuthState = {
+    Guest: 0,
+    EnteringName: 1,
+    ConfirmCreate: 2,
+    EnteringPassword: 3,
+    Authorized: 4
+};
 
 let username = "guest";
+let sessionId = "";
+let authState = AuthState.Guest;
+let pendingUsername = "";
 let connected = false;
 
 // История сообщений
@@ -22,6 +35,7 @@ setTimeout(() => {
     addMessage("╭────────────────────────────────────────────╮", "system");
     addMessage("│ Добро пожаловать в STALKnet!", "system");
     addMessage("│ Введите /help для списка команд", "system");
+    addMessage("│ Введите /auth для авторизации", "system");
     addMessage("╰────────────────────────────────────────────╯", "system");
 }, 1000);
 
@@ -29,26 +43,26 @@ function addMessage(text, type, msgUsername = null, isReply = false, recipientUs
     type = type || "system";
     const div = document.createElement("div");
     div.className = "message " + type;
-    
+
     // Добавляем класс reply если это ответ
     if (isReply && type === "user") {
         div.className += " reply";
     }
-    
+
     const time = new Date().toLocaleTimeString();
-    
+
     let usernameDisplay = "";
-    
+
     // Отображение имени отправителя
     if (msgUsername) {
         usernameDisplay = "<span class=\"username\" onclick=\"setReplyTo('" + msgUsername + "')\">[" + msgUsername + "]</span> ";
     }
-    
+
     // Отображение имени получателя (для ответов)
     if (recipientUsername) {
         usernameDisplay += "<span class=\"username\" onclick=\"setReplyTo('" + recipientUsername + "')\">> [" + recipientUsername + "]</span> ";
     }
-    
+
     div.innerHTML = "<span class=\"timestamp\">[" + time + "]</span>" + usernameDisplay + text;
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
@@ -57,13 +71,13 @@ function addMessage(text, type, msgUsername = null, isReply = false, recipientUs
 function sendMessage() {
     let text = input.value.trim();
     if (!text) return;
-    
+
     // Сохраняем в историю
     messageHistory.push(text);
     historyIndex = messageHistory.length;
-    
+
     input.value = "";
-    
+
     // Проверяем, есть ли получатель в начале сообщения (формат "[ник]: текст")
     let isReply = false;
     let recipientUser = null;
@@ -73,10 +87,25 @@ function sendMessage() {
         recipientUser = replyMatch[1];
         text = replyMatch[2];  // отрезаем "[ник]: " и оставляем только текст
     }
-    
+
     if (text.startsWith("/")) {
         handleCommand(text);
     } else {
+        // Обработка состояний авторизации - ввод имени/пароля
+        if (authState === AuthState.EnteringName) {
+            handleEnteringName("", [text]);
+            return;
+        }
+        if (authState === AuthState.EnteringPassword) {
+            handleEnteringPassword("", [text]);
+            return;
+        }
+        
+        // Блокировка отправки сообщений для неавторизованных
+        if (authState !== AuthState.Authorized) {
+            addMessage("Требуется авторизация. Введите /auth для авторизации.", "system");
+            return;
+        }
         addMessage(text, "user", username, isReply, recipientUser);
     }
 }
@@ -96,19 +125,31 @@ function handleCommand(cmd) {
     const command = parts[0].toLowerCase();
     const args = parts.slice(1);
 
+    // Обработка состояний авторизации
+    if (authState === AuthState.EnteringName) {
+        handleEnteringName(command, args);
+        return;
+    }
+    if (authState === AuthState.EnteringPassword) {
+        handleEnteringPassword(command, args);
+        return;
+    }
+
     switch(command) {
         case "/help":
             addMessage("╭────────────────────────────────────────────╮", "system");
             addMessage("│ Доступные команды:", "system");
             addMessage("│ /help - Показать эту справку", "system");
             addMessage("│ /clear - Очистить экран", "system");
-            addMessage("│ /nick - Сменить имя пользователя", "system");
             addMessage("│ /connect - Статус подключения", "system");
             addMessage("│ /quit - Выйти", "system");
-            addMessage("│ /mock - Отправить сообщение", "system");
-            addMessage("│ /mockmsg - Случайное сообщение", "system");
-            addMessage("│ /mocktask - Показать задание", "system");
-            addMessage("│ /takemocktask - Взять задание", "system");
+            addMessage("│ /auth - Авторизация", "system");
+            if (authState === AuthState.Authorized) {
+                addMessage("│ /nick <name> - Сменить имя", "system");
+                addMessage("│ /mock <text> - Отправить сообщение", "system");
+                addMessage("│ /mockmsg - Случайное сообщение", "system");
+                addMessage("│ /mocktask - Показать задание", "system");
+            }
             addMessage("╰────────────────────────────────────────────╯", "system");
             break;
         case "/clear":
@@ -116,20 +157,6 @@ function handleCommand(cmd) {
             addMessage("╭────────────────────────────────────╮", "system");
             addMessage("│ Экран очищен", "system");
             addMessage("╰────────────────────────────────────╯", "system");
-            break;
-        case "/nick":
-            if (args.length === 0) {
-                addMessage("╭────────────────────────────────────╮", "system");
-                addMessage("│ Использование: /nick <имя>", "system");
-                addMessage("╰────────────────────────────────────╯", "system");
-            } else {
-                const oldNick = username;
-                username = args[0];
-                userDisplay.innerHTML = "├ user: " + username + " ┤";
-                addMessage("╭────────────────────────────────────╮", "system");
-                addMessage("│ Имя изменено с '" + oldNick + "' на '" + username + "'", "system");
-                addMessage("╰────────────────────────────────────╯", "system");
-            }
             break;
         case "/connect":
             const statusIcon = connected ? "●" : "○";
@@ -143,7 +170,29 @@ function handleCommand(cmd) {
             addMessage("│ До свидания!", "system");
             addMessage("╰────────────────────────────────────╯", "system");
             break;
+        case "/nick":
+            if (authState !== AuthState.Authorized) {
+                addMessage("Требуется авторизация. Введите /auth для авторизации.", "system");
+                return;
+            }
+            if (args.length === 0) {
+                addMessage("╭────────────────────────────────────╮", "system");
+                addMessage("│ Использование: /nick <имя>", "system");
+                addMessage("╰────────────────────────────────────╯", "system");
+            } else {
+                const oldNick = username;
+                username = args[0];
+                userDisplay.innerHTML = "├ user: " + username + " ┤";
+                addMessage("╭────────────────────────────────────╮", "system");
+                addMessage("│ Имя изменено с '" + oldNick + "' на '" + username + "'", "system");
+                addMessage("╰────────────────────────────────────╯", "system");
+            }
+            break;
         case "/mock":
+            if (authState !== AuthState.Authorized) {
+                addMessage("Требуется авторизация. Введите /auth для авторизации.", "system");
+                return;
+            }
             if (args.length === 0) {
                 addMessage("╭────────────────────────────────────╮", "system");
                 addMessage("│ Использование: /mock <текст>", "system");
@@ -153,6 +202,10 @@ function handleCommand(cmd) {
             }
             break;
         case "/mockmsg":
+            if (authState !== AuthState.Authorized) {
+                addMessage("Требуется авторизация. Введите /auth для авторизации.", "system");
+                return;
+            }
             const msgs = [
                 "Ни пуха, ни пера, сталкеры!",
                 "Здорово, бродяги!",
@@ -175,13 +228,11 @@ function handleCommand(cmd) {
             const user = users[Math.floor(Math.random() * users.length)];
             addMessage(msgs[idx], "user", user);
             break;
-        case "/takemocktask":
-            const taskId = Math.floor(Math.random() * 100);
-            addMessage("╭────────────────────────────────────────────╮", "task");
-            addMessage("│ " + username + " взял задание #" + taskId, "task");
-            addMessage("╰────────────────────────────────────────────╯", "task");
-            break;
         case "/mocktask":
+            if (authState !== AuthState.Authorized) {
+                addMessage("Требуется авторизация. Введите /auth для авторизации.", "system");
+                return;
+            }
             const tasks = [
                 {
                     id: 42,
@@ -229,11 +280,161 @@ function handleCommand(cmd) {
             addMessage("│ Награда: " + task.reward, "task");
             addMessage("╰────────────────────────────────────────────╯", "task");
             break;
+
+        // Команды авторизации
+        case "/auth":
+            handleAuth();
+            break;
+        case "/y":
+            handleConfirm();
+            break;
+        case "/n":
+            handleDecline();
+            break;
+        case "/cancel":
+            handleCancel();
+            break;
+
         default:
             addMessage("╭────────────────────────────────────╮", "system");
             addMessage("│ Неизвестная команда: " + command, "system");
             addMessage("╰────────────────────────────────────╯", "system");
     }
+}
+
+// === Функции авторизации ===
+
+function handleAuth() {
+    if (authState === AuthState.Authorized) {
+        addMessage("Вы уже авторизованы как: " + username, "system");
+        addMessage("Session ID: " + sessionId, "system");
+        return;
+    }
+
+    authState = AuthState.EnteringName;
+    addMessage("╭────────────────────────────────────────────╮", "system");
+    addMessage("│ STALKnet Авторизация", "system");
+    addMessage("│ Введите имя сталкера:", "system");
+    addMessage("│ Введите /cancel для отмены", "system");
+    addMessage("╰────────────────────────────────────────────╯", "system");
+}
+
+function handleEnteringName(command, args) {
+    // /cancel обрабатывается отдельно
+    if (command === "/cancel") {
+        handleCancel();
+        return;
+    }
+
+    // Игнорируем другие команды в этом состоянии
+    if (command.startsWith("/")) {
+        addMessage("Введите имя сталкера или /cancel для отмены.", "system");
+        return;
+    }
+
+    const usernameInput = args.join(" ").trim();
+    if (usernameInput === "") {
+        addMessage("Имя не может быть пустым. Попробуйте ещё раз или /cancel для отмены.", "system");
+        return;
+    }
+
+    // В прототипе просто принимаем имя (без реальной проверки на уникальность)
+    // Для демонстрации считаем, что имя уникально
+    pendingUsername = usernameInput;
+    authState = AuthState.ConfirmCreate;
+
+    addMessage("╭────────────────────────────────────────────╮", "system");
+    addMessage("│ Имя '" + pendingUsername + "' доступно.", "system");
+    addMessage("│ Создать профиль?", "system");
+    addMessage("│ Введите /y для подтверждения или /n для отмены", "system");
+    addMessage("╰────────────────────────────────────────────╯", "system");
+}
+
+function handleConfirm() {
+    if (authState !== AuthState.ConfirmCreate) {
+        addMessage("Нечего подтверждать. Введите /auth для начала авторизации.", "system");
+        return;
+    }
+
+    authState = AuthState.EnteringPassword;
+    addMessage("╭────────────────────────────────────────────╮", "system");
+    addMessage("│ Введите пароль для: " + pendingUsername, "system");
+    addMessage("│ Введите /cancel для отмены", "system");
+    addMessage("╰────────────────────────────────────────────╯", "system");
+}
+
+function handleDecline() {
+    if (authState !== AuthState.ConfirmCreate) {
+        addMessage("Нечего отклонять.", "system");
+        return;
+    }
+
+    cancelAuth();
+}
+
+function handleEnteringPassword(command, args) {
+    // /cancel обрабатывается отдельно
+    if (command === "/cancel") {
+        handleCancel();
+        return;
+    }
+
+    // Игнорируем другие команды в этом состоянии
+    if (command.startsWith("/")) {
+        addMessage("Введите пароль или /cancel для отмены.", "system");
+        return;
+    }
+
+    const password = args.join(" ").trim();
+    if (password === "") {
+        addMessage("Пароль не может быть пустым. Попробуйте ещё раз или /cancel для отмены.", "system");
+        return;
+    }
+
+    // В прототипе просто создаём "сессию"
+    // Генерируем случайный Session ID
+    sessionId = generateSessionId();
+    username = pendingUsername;
+    authState = AuthState.Authorized;
+
+    // Обновляем отображение
+    userDisplay.innerHTML = "├ user: " + username + " ┤";
+    sessionDisplay.style.display = "inline";
+    sessionDisplay.innerHTML = "├ SID: " + sessionId + " ┤";
+
+    addMessage("╭────────────────────────────────────────────╮", "system");
+    addMessage("│ Профиль создан успешно!", "system");
+    addMessage("│ Добро пожаловать, " + username + "!", "system");
+    addMessage("│ Ваш Session ID: " + sessionId, "system");
+    addMessage("╰────────────────────────────────────────────╯", "system");
+
+    pendingUsername = "";
+}
+
+function handleCancel() {
+    if (authState === AuthState.EnteringName ||
+        authState === AuthState.ConfirmCreate ||
+        authState === AuthState.EnteringPassword) {
+        cancelAuth();
+    } else {
+        addMessage("Нечего отменять.", "system");
+    }
+}
+
+function cancelAuth() {
+    addMessage("Авторизация отменена.", "system");
+    authState = AuthState.Guest;
+    pendingUsername = "";
+}
+
+function generateSessionId() {
+    // Генерируем случайный ID в формате hex
+    const chars = '0123456789abcdef';
+    let result = '';
+    for (let i = 0; i < 32; i++) {
+        result += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return result;
 }
 
 sendBtn.addEventListener("click", sendMessage);

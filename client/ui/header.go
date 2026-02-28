@@ -10,6 +10,7 @@ import (
 type Header struct {
     networkName  string
     username     string
+    sessionID    string
     connected    bool
     serverStatus string
     width        int
@@ -19,6 +20,7 @@ func NewHeader(username string) *Header {
     return &Header{
         networkName:  "STALKnet",
         username:     username,
+        sessionID:    "",
         connected:    false,
         serverStatus: "Connecting...",
         width:        80,
@@ -32,6 +34,14 @@ func (h *Header) SetConnected(connected bool) {
     } else {
         h.serverStatus = "Disconnected"
     }
+}
+
+func (h *Header) SetUsername(username string) {
+    h.username = username
+}
+
+func (h *Header) SetSessionID(sessionID string) {
+    h.sessionID = sessionID
 }
 
 func (h *Header) SetServerStatus(status string) {
@@ -48,16 +58,28 @@ func (h *Header) Render() string {
     if h.connected {
         statusStyle = StatusConnectedStyle
     }
+
     left := NetworkNameStyle.Render(fmt.Sprintf(" %s ", h.networkName))
-    center := UsernameStyle.Render(fmt.Sprintf(" user: %s ", h.username))
+
+    // Формируем центральную часть с username и session ID
+    var center string
+    if h.sessionID != "" {
+        center = UsernameStyle.Render(fmt.Sprintf(" user: %s | SID: %s ", h.username, h.sessionID))
+    } else {
+        center = UsernameStyle.Render(fmt.Sprintf(" user: %s ", h.username))
+    }
+
     right := statusStyle.Render(fmt.Sprintf(" %s %s ", indicator, h.serverStatus))
+
     parts := []string{left, center, right}
     result := strings.Join(parts, " ")
+
     if h.width > 0 {
         padding := h.width - lipgloss.Width(result)
         if padding > 0 {
             result = lipgloss.NewStyle().Background(ColorGreen).Width(h.width).Render(result)
         }
     }
+
     return HeaderStyle.Render(result)
 }
