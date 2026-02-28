@@ -10,8 +10,8 @@ RUN go mod download || true
 COPY handlers/ ./handlers/
 COPY config/ ./config/
 COPY middleware/ ./middleware/
+COPY web/ ./web/
 COPY main.go ./main.go
-COPY web/ ./handlers/web/
 RUN CGO_ENABLED=0 GOOS=linux go build -o gateway .
 
 FROM alpine:3.18

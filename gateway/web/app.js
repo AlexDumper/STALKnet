@@ -3,11 +3,20 @@ const messages = document.getElementById("messages");
 const input = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 const statusDisplay = document.getElementById("statusDisplay");
-const inputLabel = document.getElementById("inputLabel");
+const usernameDisplay = document.getElementById("usernameDisplay");
 const statusLight = document.getElementById("statusLight");
+const versionDisplay = document.getElementById("versionDisplay");
 
 // API URL
 const API_BASE = window.location.origin;
+
+// Версия приложения
+const APP_VERSION = "0.1.3";
+
+// Отображение версии
+if (versionDisplay) {
+    versionDisplay.textContent = "v" + APP_VERSION;
+}
 
 // WebSocket URL - используем тот же хост
 const WS_HOST = window.location.hostname;
@@ -23,10 +32,12 @@ let serverConnected = true;
 // Текущее отображаемое имя
 let currentDisplayName = "Guest";
 
-// Обновление отображаемого имени (только label у поля ввода)
+// Обновление отображаемого имени
 function updateDisplayName(newName) {
     currentDisplayName = newName;
-    inputLabel.textContent = newName + ":";
+    if (usernameDisplay) {
+        usernameDisplay.textContent = newName;
+    }
 }
 
 // Состояния авторизации
@@ -72,17 +83,22 @@ function saveSession() {
         savedAt: Date.now()
     };
     localStorage.setItem('stalknet_session', JSON.stringify(sessionData));
+    console.log("Сессия сохранена:", sessionData);
 }
 
 function loadSession() {
     const sessionData = localStorage.getItem('stalknet_session');
+    console.log("Загрузка сессии из localStorage:", sessionData ? "найдена" : "не найдена");
     if (!sessionData) return false;
     
     try {
         const data = JSON.parse(sessionData);
         // Проверяем, не устарела ли сессия (более 7 дней)
         const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 дней в мс
-        if (Date.now() - data.savedAt > maxAge) {
+        const age = Date.now() - data.savedAt;
+        console.log("Возраст сессии:", Math.floor(age / 1000 / 60), "минут");
+        if (age > maxAge) {
+            console.log("Сессия устарела, очистка");
             clearSession();
             return false;
         }
@@ -94,6 +110,7 @@ function loadSession() {
         authState = data.authState || AuthState.Guest;
         userId = data.userId;
         
+        console.log("Сессия загружена:", { username, authState, hasToken: !!accessToken });
         return authState === AuthState.Authorized && accessToken !== "";
     } catch (e) {
         console.error("Ошибка загрузки сессии:", e);
@@ -183,6 +200,12 @@ function updateStatus() {
         wsConnected
     });
 
+    // Принудительно сохраняем сессию при изменении authState на Authorized
+    if (authState === AuthState.Authorized && accessToken) {
+        console.log("updateStatus: authState=Authorized, сохраняем сессию...");
+        saveSession();
+    }
+
     if (!serverConnected) {
         statusLight.className = "status-indicator status-disconnected";
         statusLight.title = "Нет соединения с сервером";
@@ -209,9 +232,9 @@ function connectWebSocket(userId, username) {
         wsConnected = true;
         console.log("WebSocket connected");
         updateStatus();
-        addMessage("╭────────────────────────────────────────────╮", "system");
-        addMessage("│ Подключено к чату", "system");
-        addMessage("╰────────────────────────────────────────────╯", "system");
+        addMessage("---", "system");
+        addMessage("Подключено к чату", "system");
+        addMessage("---", "system");
     };
 
     ws.onmessage = function(event) {
@@ -297,10 +320,10 @@ checkServer();
         updateStatus();
         // Подключаемся к WebSocket
         connectWebSocket(userId, username);
-        addMessage("╭────────────────────────────────────────────╮", "system");
-        addMessage("│ Сессия восстановлена", "system");
-        addMessage("│ С возвращением, " + username + "!", "system");
-        addMessage("╰────────────────────────────────────────────╯", "system");
+        addMessage("---", "system");
+        addMessage("Сессия восстановлена", "system");
+        addMessage("С возвращением, " + username + "!", "system");
+        addMessage("---", "system");
     }
 })();
 
@@ -310,11 +333,11 @@ setTimeout(() => {
     // Загружаем приветственное сообщение из базы
     loadContent("help_welcome", function() {
         // Дефолтное приветствие
-        addMessage("╭────────────────────────────────────────────╮", "system");
-        addMessage("│ Добро пожаловать в STALKnet!", "system");
-        addMessage("│ Введите /help для списка команд", "system");
-        addMessage("│ Введите /auth для авторизации", "system");
-        addMessage("╰────────────────────────────────────────────╯", "system");
+        addMessage("---", "system");
+        addMessage("Добро пожаловать в STALKnet!", "system");
+        addMessage("Введите /help для списка команд", "system");
+        addMessage("Введите /auth для авторизации", "system");
+        addMessage("---", "system");
     });
 }, 1000);
 
@@ -327,7 +350,10 @@ function addMessage(text, type, msgUsername = null, isReply = false, recipientUs
         div.className += " reply";
     }
 
-    const time = new Date().toLocaleTimeString();
+    const time = new Date().toLocaleTimeString('ru-RU', { 
+        hour: '2-digit', 
+        minute: '2-digit'
+    });
     let usernameDisplay = "";
 
     if (msgUsername) {
@@ -421,30 +447,30 @@ async function handleCommand(cmd) {
             const helpKey = authState === AuthState.Authorized ? "help_authorized" : "help_guest";
             loadContent(helpKey, function() {
                 // Ошибка если не загрузилось из БД
-                addMessage("╭────────────────────────────────────────────╮", "system");
-                addMessage("│ ОШИБКА: Нет связи с базой статического контента", "system");
-                addMessage("╰────────────────────────────────────────────╯", "system");
+                addMessage("---", "system");
+                addMessage("ОШИБКА: Нет связи с базой статического контента", "system");
+                addMessage("---", "system");
             });
             break;
         case "/clear":
             messages.innerHTML = "";
-            addMessage("╭────────────────────────────────────╮", "system");
-            addMessage("│ Экран очищен", "system");
-            addMessage("╰────────────────────────────────────╯", "system");
+            addMessage("---", "system");
+            addMessage("Экран очищен", "system");
+            addMessage("---", "system");
             break;
         case "/connect":
-            const statusIcon = connected ? "●" : "○";
+            const statusIcon = connected ? "?" : "0";
             const statusText = connected ? "Подключено" : "Отключено";
-            addMessage("╭────────────────────────────────────╮", "system");
-            addMessage("│ Статус: " + statusIcon + " " + statusText, "system");
-            addMessage("╰────────────────────────────────────╯", "system");
+            addMessage("---", "system");
+            addMessage("Статус: " + statusIcon + " " + statusText, "system");
+            addMessage("---", "system");
             break;
         case "/quit":
             // Сначала logout, потом прощание
             await handleLogout();
-            addMessage("╭────────────────────────────────────╮", "system");
-            addMessage("│ До свидания!", "system");
-            addMessage("╰────────────────────────────────────╯", "system");
+            addMessage("---", "system");
+            addMessage("До свидания!", "system");
+            addMessage("---", "system");
             break;
         case "/logout":
             await handleLogout();
@@ -455,16 +481,16 @@ async function handleCommand(cmd) {
                 return;
             }
             if (args.length === 0) {
-                addMessage("╭────────────────────────────────────╮", "system");
-                addMessage("│ Использование: /nick <имя>", "system");
-                addMessage("╰────────────────────────────────────╯", "system");
+                addMessage("---", "system");
+                addMessage("Использование: /nick <имя>", "system");
+                addMessage("---", "system");
             } else {
                 const oldNick = username;
                 username = args[0];
-                userDisplay.innerHTML = "├ user: " + username + " ┤";
-                addMessage("╭────────────────────────────────────╮", "system");
-                addMessage("│ Имя изменено с '" + oldNick + "' на '" + username + "'", "system");
-                addMessage("╰────────────────────────────────────╯", "system");
+                userDisplay.innerHTML = "+ user: " + username + " +";
+                addMessage("---", "system");
+                addMessage("Имя изменено с '" + oldNick + "' на '" + username + "'", "system");
+                addMessage("---", "system");
             }
             break;
         case "/mock":
@@ -473,9 +499,9 @@ async function handleCommand(cmd) {
                 return;
             }
             if (args.length === 0) {
-                addMessage("╭────────────────────────────────────╮", "system");
-                addMessage("│ Использование: /mock <текст>", "system");
-                addMessage("╰────────────────────────────────────╯", "system");
+                addMessage("---", "system");
+                addMessage("Использование: /mock <текст>", "system");
+                addMessage("---", "system");
             } else {
                 addMessage(args.join(" "), "user", username);
             }
@@ -522,12 +548,12 @@ async function handleCommand(cmd) {
             ];
             const tidx = Math.floor(Math.random() * tasks.length);
             const task = tasks[tidx];
-            addMessage("╭────────────────────────────────────────────╮", "task");
-            addMessage("│ Задание #" + task.id, "task");
-            addMessage("│ " + task.title, "task");
-            addMessage("│ Заказчик: " + task.client, "task");
-            addMessage("│ Награда: " + task.reward, "task");
-            addMessage("╰────────────────────────────────────────────╯", "task");
+            addMessage("---", "task");
+            addMessage("Задание #" + task.id, "task");
+            addMessage("" + task.title, "task");
+            addMessage("Заказчик: " + task.client, "task");
+            addMessage("Награда: " + task.reward, "task");
+            addMessage("---", "task");
             break;
 
         case "/auth":
@@ -544,18 +570,18 @@ async function handleCommand(cmd) {
             break;
         case "/login":
             if (args.length < 2) {
-                addMessage("╭────────────────────────────────────╮", "system");
-                addMessage("│ Использование: /login <user> <pass>", "system");
-                addMessage("╰────────────────────────────────────╯", "system");
+                addMessage("---", "system");
+                addMessage("Использование: /login <user> <pass>", "system");
+                addMessage("---", "system");
             } else {
                 await handleQuickLogin(args[0], args[1]);
             }
             break;
 
         default:
-            addMessage("╭────────────────────────────────────╮", "system");
-            addMessage("│ Неизвестная команда: " + command, "system");
-            addMessage("╰────────────────────────────────────╯", "system");
+            addMessage("---", "system");
+            addMessage("Неизвестная команда: " + command, "system");
+            addMessage("---", "system");
     }
 }
 
@@ -569,14 +595,14 @@ function handleAuth() {
     }
 
     authState = AuthState.EnteringName;
-    addMessage("╭────────────────────────────────────────────╮", "system");
-    addMessage("│ STALKnet Авторизация", "system");
-    addMessage("│ Требования:", "system");
-    addMessage("│ - Имя: минимум 2 символа", "system");
-    addMessage("│ - Пароль: минимум 6 символов", "system");
-    addMessage("│ Введите имя сталкера:", "system");
-    addMessage("│ Введите /cancel для отмены", "system");
-    addMessage("╰────────────────────────────────────────────╯", "system");
+    addMessage("---", "system");
+    addMessage("STALKnet Авторизация", "system");
+    addMessage("Требования:", "system");
+    addMessage("- Имя: минимум 2 символа", "system");
+    addMessage("- Пароль: минимум 6 символов", "system");
+    addMessage("Введите имя сталкера:", "system");
+    addMessage("Введите /cancel для отмены", "system");
+    addMessage("---", "system");
 }
 
 async function handleEnteringName(command, args) {
@@ -598,16 +624,16 @@ async function handleEnteringName(command, args) {
 
     // Проверка длины имени
     if (usernameInput.length < 2) {
-        addMessage("╭────────────────────────────────────────────╮", "system");
-        addMessage("│ Ошибка: имя слишком короткое!", "system");
-        addMessage("│ Требуется минимум 2 символа", "system");
-        addMessage("│ Попробуйте ещё раз или /cancel для отмены", "system");
-        addMessage("╰────────────────────────────────────────────╯", "system");
+        addMessage("---", "system");
+        addMessage("Ошибка: имя слишком короткое!", "system");
+        addMessage("Требуется минимум 2 символа", "system");
+        addMessage("Попробуйте ещё раз или /cancel для отмены", "system");
+        addMessage("---", "system");
         return;
     }
 
     // Показываем сообщение о проверке
-    addMessage("│ Проверка имени '" + usernameInput + "'...", "system");
+    addMessage("Проверка имени '" + usernameInput + "'...", "system");
 
     // Проверяем, существует ли пользователь через API
     try {
@@ -623,27 +649,27 @@ async function handleEnteringName(command, args) {
                 // Пользователь существует - сразу переходим к вводу пароля
                 pendingUsername = usernameInput;
                 authState = AuthState.EnteringPassword;
-                addMessage("│ Пользователь '" + pendingUsername + "' найден.", "system");
-                addMessage("│ Введите пароль:", "system");
-                addMessage("│ Требование: минимум 6 символов", "system");
-                addMessage("│ Введите /cancel для отмены", "system");
-                addMessage("╰────────────────────────────────────────────╯", "system");
+                addMessage("Пользователь '" + pendingUsername + "' найден.", "system");
+                addMessage("Введите пароль:", "system");
+                addMessage("Требование: минимум 6 символов", "system");
+                addMessage("Введите /cancel для отмены", "system");
+                addMessage("---", "system");
                 return;
             }
         }
     } catch (e) {
-        addMessage("│ Ошибка проверки: " + e.message, "system");
+        addMessage("Ошибка проверки: " + e.message, "system");
     }
 
     // Пользователь не найден - предлагаем создать профиль
     pendingUsername = usernameInput;
     authState = AuthState.ConfirmCreate;
 
-    addMessage("╭────────────────────────────────────────────╮", "system");
-    addMessage("│ Имя '" + pendingUsername + "' свободно.", "system");
-    addMessage("│ Создать профиль?", "system");
-    addMessage("│ Введите /y для подтверждения или /n для отмены", "system");
-    addMessage("╰────────────────────────────────────────────╯", "system");
+    addMessage("---", "system");
+    addMessage("Имя '" + pendingUsername + "' свободно.", "system");
+    addMessage("Создать профиль?", "system");
+    addMessage("Введите /y для подтверждения или /n для отмены", "system");
+    addMessage("---", "system");
 }
 
 function handleConfirm() {
@@ -653,11 +679,11 @@ function handleConfirm() {
     }
 
     authState = AuthState.EnteringPassword;
-    addMessage("╭────────────────────────────────────────────╮", "system");
-    addMessage("│ Введите пароль для: " + pendingUsername, "system");
-    addMessage("│ Требование: минимум 6 символов", "system");
-    addMessage("│ Введите /cancel для отмены", "system");
-    addMessage("╰────────────────────────────────────────────╯", "system");
+    addMessage("---", "system");
+    addMessage("Введите пароль для: " + pendingUsername, "system");
+    addMessage("Требование: минимум 6 символов", "system");
+    addMessage("Введите /cancel для отмены", "system");
+    addMessage("---", "system");
 }
 
 function handleDecline() {
@@ -687,11 +713,11 @@ async function handleEnteringPassword(command, args) {
 
     // Проверка длины пароля
     if (password.length < 6) {
-        addMessage("╭────────────────────────────────────────────╮", "system");
-        addMessage("│ Ошибка: пароль слишком короткий!", "system");
-        addMessage("│ Требуется минимум 6 символов", "system");
-        addMessage("│ Попробуйте ещё раз или /cancel для отмены", "system");
-        addMessage("╰────────────────────────────────────────────╯", "system");
+        addMessage("---", "system");
+        addMessage("Ошибка: пароль слишком короткий!", "system");
+        addMessage("Требуется минимум 6 символов", "system");
+        addMessage("Попробуйте ещё раз или /cancel для отмены", "system");
+        addMessage("---", "system");
         return;
     }
 
@@ -708,7 +734,7 @@ async function handleEnteringPassword(command, args) {
 
         if (registerResp.status === 409) {
             // Пользователь уже существует, пробуем login
-            addMessage("│ Пользователь существует. Выполняется вход...", "system");
+            addMessage("Пользователь существует. Выполняется вход...", "system");
         } else if (!registerResp.ok) {
             const errData = await registerResp.json();
             addMessage("Ошибка регистрации: " + (errData.error || "Неизвестная ошибка"), "system");
@@ -756,11 +782,11 @@ async function handleEnteringPassword(command, args) {
         const shortSid = sessionId.length > 12 ? "..." + sessionId.slice(-12) : sessionId;
         updateDisplayName(username);
 
-        addMessage("╭────────────────────────────────────────────╮", "system");
-        addMessage("│ Профиль создан/найден успешно!", "system");
-        addMessage("│ Добро пожаловать, " + username + "!", "system");
-        addMessage("│ Ваш Session ID: " + shortSid, "system");
-        addMessage("╰────────────────────────────────────────────╯", "system");
+        addMessage("---", "system");
+        addMessage("Профиль создан/найден успешно!", "system");
+        addMessage("Добро пожаловать, " + username + "!", "system");
+        addMessage("Ваш Session ID: " + shortSid, "system");
+        addMessage("---", "system");
 
         // Подключаемся к WebSocket
         connectWebSocket(tokenData.user_id, username);
@@ -792,26 +818,37 @@ async function handleQuickLogin(user, pass) {
         }
 
         const tokenData = await loginResp.json();
+        console.log("Получены токены:", { username: tokenData.username, hasAccessToken: !!tokenData.access_token });
 
+        // Сохраняем сессию
         accessToken = tokenData.access_token;
         refreshToken = tokenData.refresh_token;
         sessionId = tokenData.session_id;
         username = tokenData.username;
         userId = tokenData.user_id;
         authState = AuthState.Authorized;
-        
+
+        console.log("Перед сохранением сессии...");
         // Сохраняем в localStorage
         saveSession();
+        console.log("После сохранения сессии, проверяем localStorage:", localStorage.getItem('stalknet_session') ? "OK" : "NULL");
 
+        // Обновляем отображение
+        const shortSid = sessionId.length > 12 ? "..." + sessionId.slice(-12) : sessionId;
         updateDisplayName(username);
 
-        addMessage("╭────────────────────────────────────────────╮", "system");
-        addMessage("│ Вход выполнен успешно!", "system");
-        addMessage("│ Добро пожаловать, " + username + "!", "system");
-        addMessage("╰────────────────────────────────────────────╯", "system");
+        addMessage("---", "system");
+        addMessage("Профиль создан/найден успешно!", "system");
+        addMessage("Добро пожаловать, " + username + "!", "system");
+        addMessage("Ваш Session ID: " + shortSid, "system");
+        addMessage("---", "system");
 
         // Подключаемся к WebSocket
-        connectWebSocket(tokenData.user_id, username);
+        try {
+            connectWebSocket(tokenData.user_id, username);
+        } catch (wsError) {
+            console.error("Ошибка подключения к WebSocket:", wsError);
+        }
 
         // Обновляем статус
         updateStatus();
@@ -859,9 +896,9 @@ async function handleLogout() {
     // Обновляем статус
     updateStatus();
 
-    addMessage("╭────────────────────────────────────╮", "system");
-    addMessage("│ Выход из аккаунта выполнен", "system");
-    addMessage("╰────────────────────────────────────╯", "system");
+    addMessage("---", "system");
+    addMessage("Выход из аккаунта выполнен", "system");
+    addMessage("---", "system");
 }
 
 function handleCancel() {
@@ -875,9 +912,9 @@ function handleCancel() {
 }
 
 function cancelAuth() {
-    addMessage("╭────────────────────────────────────────────╮", "system");
-    addMessage("│ Авторизация отменена", "system");
-    addMessage("╰────────────────────────────────────────────╯", "system");
+    addMessage("---", "system");
+    addMessage("Авторизация отменена", "system");
+    addMessage("---", "system");
     authState = AuthState.Guest;
     pendingUsername = "";
 }
@@ -917,3 +954,4 @@ input.addEventListener("keydown", function(event) {
 window.addEventListener("load", function() {
     input.focus();
 });
+
