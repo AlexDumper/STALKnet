@@ -46,6 +46,7 @@ func SetupRouter(
 
 	// Создаём хендлер
 	authHandler := NewAuthHandler(repo, jwtSecret)
+	authHandler.SetDB(dbConn)
 
 	// Регистрируем маршруты
 	auth := router.Group("/api/auth")
@@ -58,6 +59,9 @@ func SetupRouter(
 		auth.POST("/check-username", authHandler.CheckUsername)
 		auth.GET("/session", authHandler.GetSessionInfo)
 	}
+
+	// Контент (справка и т.д.)
+	router.GET("/api/content/:key", authHandler.GetContent)
 
 	router.GET("/health", func(c *gin.Context) {
 		// Проверка подключения к БД

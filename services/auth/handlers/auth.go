@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +18,12 @@ import (
 type AuthHandler struct {
 	repo      *repository.AuthRepository
 	jwtSecret string
+	db        *sql.DB
+}
+
+// SetDB устанавливает соединение с базой данных
+func (h *AuthHandler) SetDB(db *sql.DB) {
+	h.db = db
 }
 
 type RegisterRequest struct {
@@ -151,14 +159,30 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Обновляем статус пользователя
 	_ = h.repo.UpdateUserStatus(ctx, user.ID, "online")
 
+	// Генерируем уникальный session ID на основе username и password hash
+	sessionID := generateSessionID(user.Username, user.PasswordHash)
+
 	c.JSON(http.StatusOK, TokenResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    int64(15 * time.Minute),
 		UserID:       user.ID,
 		Username:     user.Username,
-		SessionID:    accessToken[:16], // Короткий ID сессии
+		SessionID:    sessionID,
 	})
+}
+
+// generateSessionID генерирует уникальный ID сессии на основе username и password hash
+func generateSessionID(username, passwordHash string) string {
+	// Берем первые 10 символов password hash
+	hashPart := ""
+	if len(passwordHash) >= 10 {
+		hashPart = passwordHash[:10]
+	} else {
+		hashPart = passwordHash
+	}
+	// Формируем session ID: username + hash
+	return username + "_" + hashPart
 }
 
 // CheckUsername проверяет существование пользователя
@@ -374,4 +398,54 @@ func GetJWTSecret() string {
 		secret = "your-secret-key-change-in-production"
 	}
 	return secret
+}
+
+// GetContent получает статический контент по ключу с учетом статуса авторизации
+func (h *AuthHandler) GetContent(c *gin.Context) {
+	ctx := context.Background()
+
+	key := c.Param("key")
+	authStateStr := c.Query("auth_state")
+	
+	// Парсим статус авторизации (по умолчанию 0 = guest)
+	authState := 0
+	if authStateStr != "" {
+		if parsed, err := strconv.Atoi(authStateStr); err == nil {
+			authState = parsed
+		}
+	}
+
+	// Запрос к базе данных
+	query := `
+		SELECT content_key, content_type, title, content 
+		FROM static_content 
+		WHERE content_key = $1 
+		  AND is_active = true
+		  AND $2 >= min_auth_state 
+		  AND $2 <= max_auth_state
+		ORDER BY created_at DESC 
+		LIMIT 1
+	`
+
+	row := h.db.QueryRowContext(ctx, query, key, authState)
+
+	var resultKey, contentType, title string
+	var content string
+
+	err := row.Scan(&resultKey, &contentType, &title, &content)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Content not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"key": resultKey,
+		"type": contentType,
+		"title": title,
+		"content": content,
+	})
 }

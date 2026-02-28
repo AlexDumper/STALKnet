@@ -3,8 +3,8 @@ const messages = document.getElementById("messages");
 const input = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 const statusDisplay = document.getElementById("statusDisplay");
-const userDisplay = document.getElementById("userDisplay");
-const sessionDisplay = document.getElementById("sessionDisplay");
+const inputLabel = document.getElementById("inputLabel");
+const statusLight = document.getElementById("statusLight");
 
 // API URL
 const API_BASE = window.location.origin;
@@ -16,6 +16,18 @@ const WS_PORT = "8083";
 // WebSocket
 let ws = null;
 let wsConnected = false;
+
+// Статус соединения с серверами
+let serverConnected = true;
+
+// Текущее отображаемое имя
+let currentDisplayName = "Guest";
+
+// Обновление отображаемого имени (только label у поля ввода)
+function updateDisplayName(newName) {
+    currentDisplayName = newName;
+    inputLabel.textContent = newName + ":";
+}
 
 // Состояния авторизации
 const AuthState = {
@@ -46,6 +58,26 @@ let replyToUser = null;
 let usernameCheckTimeout = null;
 let lastCheckedUsername = "";
 
+// Обновление статуса подключения
+function updateStatus() {
+    console.log("updateStatus:", {
+        serverConnected,
+        authState,
+        wsConnected
+    });
+
+    if (!serverConnected) {
+        statusLight.className = "status-indicator status-disconnected";
+        statusLight.title = "Нет соединения с сервером";
+    } else if (authState === AuthState.Authorized && wsConnected) {
+        statusLight.className = "status-indicator status-connected";
+        statusLight.title = "Авторизован и подключен";
+    } else {
+        statusLight.className = "status-indicator status-guest";
+        statusLight.title = "Гость / Не авторизован";
+    }
+}
+
 // Подключение к WebSocket
 function connectWebSocket(userId, username) {
     if (ws) {
@@ -59,6 +91,7 @@ function connectWebSocket(userId, username) {
     ws.onopen = function() {
         wsConnected = true;
         console.log("WebSocket connected");
+        updateStatus();
         addMessage("╭────────────────────────────────────────────╮", "system");
         addMessage("│ Подключено к чату", "system");
         addMessage("╰────────────────────────────────────────────╯", "system");
@@ -82,6 +115,7 @@ function connectWebSocket(userId, username) {
     ws.onclose = function() {
         wsConnected = false;
         console.log("WebSocket disconnected");
+        updateStatus();
         addMessage("Отключено от чата", "system");
     };
 
@@ -102,9 +136,25 @@ function sendWebSocketMessage(text) {
     ws.send(JSON.stringify(msg));
 }
 
+// Проверка доступности сервера
+async function checkServer() {
+    try {
+        const resp = await fetch(API_BASE + "/health");
+        const data = await resp.json();
+        serverConnected = data.status === "ok";
+    } catch (e) {
+        console.log("Server check failed:", e.message);
+        serverConnected = false;
+    }
+    updateStatus();
+}
+
+// Запускаем проверку при загрузке
+checkServer();
+
 setTimeout(() => {
     connected = true;
-    statusDisplay.innerHTML = "<span class=\"header-decorator\">[</span>●<span class=\"header-decorator\">]</span> Подключено";
+    updateStatus();
     addMessage("╭────────────────────────────────────────────╮", "system");
     addMessage("│ Добро пожаловать в STALKnet!", "system");
     addMessage("│ Введите /help для списка команд", "system");
@@ -543,18 +593,20 @@ async function handleEnteringPassword(command, args) {
         authState = AuthState.Authorized;
 
         // Обновляем отображение
-        userDisplay.innerHTML = "├ user: " + username + " ┤";
-        sessionDisplay.style.display = "inline";
-        sessionDisplay.innerHTML = "├ SID: " + sessionId + " ┤";
+        const shortSid = sessionId.length > 12 ? "..." + sessionId.slice(-12) : sessionId;
+        updateDisplayName(username);
 
         addMessage("╭────────────────────────────────────────────╮", "system");
         addMessage("│ Профиль создан/найден успешно!", "system");
         addMessage("│ Добро пожаловать, " + username + "!", "system");
-        addMessage("│ Ваш Session ID: " + sessionId, "system");
+        addMessage("│ Ваш Session ID: " + shortSid, "system");
         addMessage("╰────────────────────────────────────────────╯", "system");
 
         // Подключаемся к WebSocket
         connectWebSocket(tokenData.user_id, username);
+
+        // Обновляем статус
+        updateStatus();
 
         pendingUsername = "";
     } catch (e) {
@@ -587,9 +639,7 @@ async function handleQuickLogin(user, pass) {
         username = tokenData.username;
         authState = AuthState.Authorized;
 
-        userDisplay.innerHTML = "├ user: " + username + " ┤";
-        sessionDisplay.style.display = "inline";
-        sessionDisplay.innerHTML = "├ SID: " + sessionId + " ┤";
+        updateDisplayName(username);
 
         addMessage("╭────────────────────────────────────────────╮", "system");
         addMessage("│ Вход выполнен успешно!", "system");
@@ -598,6 +648,9 @@ async function handleQuickLogin(user, pass) {
 
         // Подключаемся к WebSocket
         connectWebSocket(tokenData.user_id, username);
+
+        // Обновляем статус
+        updateStatus();
     } catch (e) {
         addMessage("Ошибка соединения с сервером: " + e.message, "system");
     }
@@ -634,8 +687,11 @@ async function handleLogout() {
     sessionId = "";
     authState = AuthState.Guest;
 
-    userDisplay.innerHTML = "├ user: guest ┤";
-    sessionDisplay.style.display = "none";
+    // Обновляем отображение на Guest
+    updateDisplayName("Guest");
+
+    // Обновляем статус
+    updateStatus();
 
     addMessage("╭────────────────────────────────────╮", "system");
     addMessage("│ Выход из аккаунта выполнен", "system");

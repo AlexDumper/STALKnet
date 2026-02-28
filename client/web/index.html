@@ -22,11 +22,11 @@
             max-width: 1200px;
             margin: 0 auto;
         }
-        .header { 
-            background: #001100; 
-            color: #00cc00; 
+        .header {
+            background: #001100;
+            color: #00cc00;
             padding: 5px 10px;
-            display: flex; 
+            display: flex;
             justify-content: space-between;
             border-top: 1px solid #006600;
             border-bottom: 1px solid #006600;
@@ -35,6 +35,30 @@
         .header-decorator {
             color: #006600;
             margin: 0 5px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+            animation: blink 1.5s infinite;
+        }
+        .status-disconnected {
+            background-color: #ff0000;
+            box-shadow: 0 0 5px #ff0000;
+        }
+        .status-guest {
+            background-color: #ffff00;
+            box-shadow: 0 0 5px #ffff00;
+        }
+        .status-connected {
+            background-color: #00ff00;
+            box-shadow: 0 0 5px #00ff00;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
         .messages {
             flex: 1;
@@ -54,10 +78,16 @@
         .message.system { color: #009900; }
         .message.task { color: #99aa00; }
         .message.user { color: #ccffcc; }
-        .input-area { 
-            display: flex; 
+        .input-area {
+            display: flex;
             gap: 10px;
             padding: 5px 0;
+            align-items: center;
+        }
+        .input-label {
+            color: #00cc00;
+            font-weight: bold;
+            white-space: nowrap;
         }
         .input-wrapper {
             flex: 1;
@@ -116,12 +146,11 @@
     <div class="container">
         <div class="header">
             <span><span class="header-decorator">☢</span> STALKnet</span>
-            <span id="userDisplay">├ user: guest ┤</span>
-            <span id="sessionDisplay" style="display:none;">├ SID: --- ┤</span>
-            <span id="statusDisplay"><span class="header-decorator">[</span>*<span class="header-decorator">]</span> Connecting...</span>
+            <span id="statusDisplay"><span class="status-indicator status-guest" id="statusLight"></span></span>
         </div>
         <div id="messages" class="messages"></div>
         <div class="input-area">
+            <span class="input-label" id="inputLabel">Guest:</span>
             <div class="input-wrapper">
                 <span class="input-prefix">[</span>
                 <input type="text" id="messageInput" placeholder="Введите сообщение или /команду..." autofocus>

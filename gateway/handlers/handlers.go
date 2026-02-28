@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stalknet/gateway/middleware"
@@ -77,6 +78,25 @@ func SetupRouter(authURL, userURL, chatURL, taskURL string) *gin.Engine {
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	// Static content API (прокси на Auth Service с БД)
+	router.GET("/api/content/:key", func(c *gin.Context) {
+		key := c.Param("key")
+		authState := c.Query("auth_state")
+		
+		// Проксируем запрос на Auth Service
+		targetURL := authURL
+		if !strings.HasSuffix(targetURL, "/") {
+			targetURL += "/"
+		}
+		
+		redirectURL := targetURL + "api/content/" + key
+		if authState != "" {
+			redirectURL += "?auth_state=" + authState
+		}
+		
+		c.Redirect(http.StatusTemporaryRedirect, redirectURL)
 	})
 
 	return router
