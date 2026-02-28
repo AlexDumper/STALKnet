@@ -33,14 +33,25 @@ $NewVersion = "${Major}.${Minor}.${Patch}"
 
 Write-Host "Обновление версии: $CurrentVersion -> $NewVersion" -ForegroundColor Green
 
-# Обновляем версию в файлах
-$Files = @($AppJsClient, $AppJsGateway, $IndexHtmlClient, $IndexHtmlGateway)
+# Обновляем версию в app.js файлах
+$AppFiles = @($AppJsClient, $AppJsGateway)
 
-foreach ($File in $Files) {
+foreach ($File in $AppFiles) {
     if (Test-Path $File) {
         $Content = Get-Content $File -Raw -Encoding UTF8
-        $Content = $Content -replace [regex]::Escape("v$CurrentVersion"), "v$NewVersion"
-        $Content = $Content -replace "APP_VERSION = `"$CurrentVersion`"", "APP_VERSION = `"$NewVersion`""
+        $Content = $Content -replace "APP_VERSION = `"[\d.]+`"", "APP_VERSION = `"$NewVersion`""
+        Set-Content $File $Content -NoNewline -Encoding UTF8
+        Write-Host "  Обновлён: $File" -ForegroundColor Gray
+    }
+}
+
+# Обновляем версию в index.html файлах (ищем любую версию v0.x.x и заменяем на новую)
+$HtmlFiles = @($IndexHtmlClient, $IndexHtmlGateway)
+
+foreach ($File in $HtmlFiles) {
+    if (Test-Path $File) {
+        $Content = Get-Content $File -Raw -Encoding UTF8
+        $Content = $Content -replace 'v\d+\.\d+\.\d+', "v$NewVersion"
         Set-Content $File $Content -NoNewline -Encoding UTF8
         Write-Host "  Обновлён: $File" -ForegroundColor Gray
     }
