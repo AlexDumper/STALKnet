@@ -277,29 +277,13 @@ async function handleCommand(cmd) {
 
     switch(command) {
         case "/help":
-            // Загружаем справку из базы данных
-            loadContent("help", function() {
-                // Дефолтный контент если не загрузился
-                const helpKey = authState === AuthState.Authorized ? "help_authorized" : "help_guest";
-                loadContent(helpKey, function() {
-                    // Совсем дефолтный если ничего не загрузилось
-                    addMessage("╭────────────────────────────────────────────╮", "system");
-                    addMessage("│ Доступные команды:", "system");
-                    addMessage("│ /help - Показать эту справку", "system");
-                    addMessage("│ /clear - Очистить экран", "system");
-                    addMessage("│ /connect - Статус подключения", "system");
-                    addMessage("│ /quit - Выйти из аккаунта и приложения", "system");
-                    addMessage("│ /auth - Авторизация", "system");
-                    addMessage("│ /logout - Выйти из аккаунта", "system");
-                    addMessage("│ /login <user> <pass> - Быстрый вход", "system");
-                    if (authState === AuthState.Authorized) {
-                        addMessage("│ /nick <name> - Сменить имя", "system");
-                        addMessage("│ /mock <text> - Отправить сообщение", "system");
-                        addMessage("│ /mockmsg - Случайное сообщение", "system");
-                        addMessage("│ /mocktask - Показать задание", "system");
-                    }
-                    addMessage("╰────────────────────────────────────────────╯", "system");
-                });
+            // Загружаем справку из базы данных в зависимости от статуса авторизации
+            const helpKey = authState === AuthState.Authorized ? "help_authorized" : "help_guest";
+            loadContent(helpKey, function() {
+                // Ошибка если не загрузилось из БД
+                addMessage("╭────────────────────────────────────────────╮", "system");
+                addMessage("│ ОШИБКА: Нет связи с базой статического контента", "system");
+                addMessage("╰────────────────────────────────────────────╯", "system");
             });
             break;
         case "/clear":

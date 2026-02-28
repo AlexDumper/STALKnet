@@ -136,6 +136,26 @@ function sendWebSocketMessage(text) {
     ws.send(JSON.stringify(msg));
 }
 
+// Загрузка контента из API
+async function loadContent(key, callback) {
+    try {
+        const resp = await fetch(API_BASE + "/api/content/" + key + "?auth_state=" + authState);
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.content) {
+                // Разбиваем контент на строки и отображаем
+                const lines = data.content.split("\n");
+                lines.forEach(line => addMessage(line, "system"));
+                return;
+            }
+        }
+    } catch (e) {
+        console.log("Failed to load content:", e.message);
+    }
+    // Если не удалось загрузить, вызываем callback с дефолтным контентом
+    if (callback) callback();
+}
+
 // Проверка доступности сервера
 async function checkServer() {
     try {
@@ -155,11 +175,15 @@ checkServer();
 setTimeout(() => {
     connected = true;
     updateStatus();
-    addMessage("╭────────────────────────────────────────────╮", "system");
-    addMessage("│ Добро пожаловать в STALKnet!", "system");
-    addMessage("│ Введите /help для списка команд", "system");
-    addMessage("│ Введите /auth для авторизации", "system");
-    addMessage("╰────────────────────────────────────────────╯", "system");
+    // Загружаем приветственное сообщение из базы
+    loadContent("help_welcome", function() {
+        // Дефолтное приветствие
+        addMessage("╭────────────────────────────────────────────╮", "system");
+        addMessage("│ Добро пожаловать в STALKnet!", "system");
+        addMessage("│ Введите /help для списка команд", "system");
+        addMessage("│ Введите /auth для авторизации", "system");
+        addMessage("╰────────────────────────────────────────────╯", "system");
+    });
 }, 1000);
 
 function addMessage(text, type, msgUsername = null, isReply = false, recipientUsername = null) {
@@ -253,22 +277,14 @@ async function handleCommand(cmd) {
 
     switch(command) {
         case "/help":
-            addMessage("╭────────────────────────────────────────────╮", "system");
-            addMessage("│ Доступные команды:", "system");
-            addMessage("│ /help - Показать эту справку", "system");
-            addMessage("│ /clear - Очистить экран", "system");
-            addMessage("│ /connect - Статус подключения", "system");
-            addMessage("│ /quit - Выйти из аккаунта и приложения", "system");
-            addMessage("│ /auth - Авторизация", "system");
-            addMessage("│ /logout - Выйти из аккаунта", "system");
-            addMessage("│ /login <user> <pass> - Быстрый вход", "system");
-            if (authState === AuthState.Authorized) {
-                addMessage("│ /nick <name> - Сменить имя", "system");
-                addMessage("│ /mock <text> - Отправить сообщение", "system");
-                addMessage("│ /mockmsg - Случайное сообщение", "system");
-                addMessage("│ /mocktask - Показать задание", "system");
-            }
-            addMessage("╰────────────────────────────────────────────╯", "system");
+            // Загружаем справку из базы данных в зависимости от статуса авторизации
+            const helpKey = authState === AuthState.Authorized ? "help_authorized" : "help_guest";
+            loadContent(helpKey, function() {
+                // Ошибка если не загрузилось из БД
+                addMessage("╭────────────────────────────────────────────╮", "system");
+                addMessage("│ ОШИБКА: Нет связи с базой статического контента", "system");
+                addMessage("╰────────────────────────────────────────────╯", "system");
+            });
             break;
         case "/clear":
             messages.innerHTML = "";
