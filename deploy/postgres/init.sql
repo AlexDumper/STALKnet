@@ -67,3 +67,59 @@ CREATE INDEX idx_tasks_status ON tasks(status);
 CREATE INDEX idx_tasks_room_id ON tasks(room_id);
 
 -- Статусы задач: open, in_progress, done, confirmed
+
+-- Статический контент (инструкции, справка)
+CREATE TABLE IF NOT EXISTS static_content (
+    id SERIAL PRIMARY KEY,
+    content_key VARCHAR(100) NOT NULL,
+    title VARCHAR(255),
+    content TEXT NOT NULL,
+    content_type VARCHAR(20) DEFAULT 'text',
+    min_auth_state INT DEFAULT 0,
+    max_auth_state INT DEFAULT 4,
+    language VARCHAR(10) DEFAULT 'ru',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_static_content_key ON static_content(content_key);
+CREATE INDEX idx_static_content_auth ON static_content(min_auth_state, max_auth_state);
+CREATE INDEX idx_static_content_language ON static_content(language);
+
+-- Начальные данные для справки
+INSERT INTO static_content (content_key, title, content, min_auth_state, max_auth_state) VALUES
+('help_guest', 'Базовые команды', 
+'╭────────────────────────────────────────────╮
+│ Доступные команды:
+│ /help - Показать эту справку
+│ /clear - Очистить экран
+│ /connect - Статус подключения
+│ /quit - Выйти из аккаунта и приложения
+│ /auth - Авторизация
+│ /logout - Выйти из аккаунта
+│ /login <user> <pass> - Быстрый вход
+╰────────────────────────────────────────────╯', 0, 0),
+
+('help_authorized', 'Полный список команд',
+'╭────────────────────────────────────────────╮
+│ Доступные команды:
+│ /help - Показать эту справку
+│ /clear - Очистить экран
+│ /connect - Статус подключения
+│ /quit - Выйти из аккаунта и приложения
+│ /auth - Авторизация
+│ /logout - Выйти из аккаунта
+│ /login <user> <pass> - Быстрый вход
+│ /nick <name> - Сменить имя
+│ /mock <text> - Отправить сообщение
+│ /mockmsg - Случайное сообщение
+│ /mocktask - Показать задание
+╰────────────────────────────────────────────╯', 4, 4),
+
+('help_welcome', 'Добро пожаловать',
+'╭────────────────────────────────────────────╮
+│ Добро пожаловать в STALKnet!
+│ Введите /help для списка команд
+│ Введите /auth для авторизации
+╰────────────────────────────────────────────╯', 0, 0);
