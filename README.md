@@ -461,6 +461,56 @@ curl -X POST http://localhost:8081/api/auth/check-username \
 }
 ```
 
+### Static Content API (порт 8081)
+
+**Получение статического контента из базы данных**
+
+| Метод | Endpoint | Описание |
+|-------|----------|----------|
+| `GET` | `/api/content/:key` | Получить контент по ключу |
+| Query Param | `auth_state` | Статус авторизации (0=Guest, 4=Authorized) |
+
+**Пример запроса:**
+```bash
+# Справка для гостя
+curl "http://localhost:8081/api/content/help_guest?auth_state=0"
+
+# Справка для авторизованного пользователя
+curl "http://localhost:8081/api/content/help_authorized?auth_state=4"
+```
+
+**Ответ:**
+```json
+{
+  "key": "help_guest",
+  "type": "text",
+  "title": "Базовые команды",
+  "content": "╭────────────────────────────────────────────╮\n│ Доступные команды:\n│ /help - Показать эту справку\n│ ..."
+}
+```
+
+**Таблица базы данных `static_content`:**
+```sql
+CREATE TABLE static_content (
+    id SERIAL PRIMARY KEY,
+    content_key VARCHAR(100) NOT NULL,      -- Уникальный ключ (help_guest, help_authorized)
+    title VARCHAR(255),                      -- Заголовок
+    content TEXT NOT NULL,                   -- Контент (текст справки)
+    content_type VARCHAR(20) DEFAULT 'text', -- Тип: text, markdown, html
+    min_auth_state INT DEFAULT 0,            -- Мин. статус авторизации
+    max_auth_state INT DEFAULT 4,            -- Макс. статус авторизации
+    language VARCHAR(10) DEFAULT 'ru',       -- Язык
+    is_active BOOLEAN DEFAULT TRUE,          -- Активность
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+```
+
+**Уровни доступа:**
+- `0` — Guest (гость, не авторизован)
+- `4` — Authorized (авторизованный пользователь)
+
+
 ### Chat Service (порт 8083)
 
 **Real-time обмен сообщениями через WebSocket**
