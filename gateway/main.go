@@ -1,12 +1,16 @@
 package main
 
 import (
+	"embed"
 	"log"
 	"os"
 
 	"github.com/stalknet/gateway/handlers"
 	"github.com/stalknet/gateway/middleware"
 )
+
+//go:embed web/index.html web/app.js
+var webFS embed.FS
 
 func main() {
 	port := os.Getenv("PORT")
@@ -37,6 +41,7 @@ func main() {
 		userURL,
 		chatURL,
 		taskURL,
+		webFS,
 	)
 
 	router.Use(middleware.CORS())

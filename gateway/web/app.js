@@ -45,6 +45,7 @@ let refreshToken = "";
 let authState = AuthState.Guest;
 let pendingUsername = "";
 let connected = false;
+let userId = null;
 
 // История сообщений
 let messageHistory = [];
@@ -57,6 +58,122 @@ let replyToUser = null;
 // Debounce для проверки имени
 let usernameCheckTimeout = null;
 let lastCheckedUsername = "";
+
+// === Сохранение сессии в localStorage ===
+
+function saveSession() {
+    const sessionData = {
+        username: username,
+        sessionId: sessionId,
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+        authState: authState,
+        userId: userId,
+        savedAt: Date.now()
+    };
+    localStorage.setItem('stalknet_session', JSON.stringify(sessionData));
+}
+
+function loadSession() {
+    const sessionData = localStorage.getItem('stalknet_session');
+    if (!sessionData) return false;
+    
+    try {
+        const data = JSON.parse(sessionData);
+        // Проверяем, не устарела ли сессия (более 7 дней)
+        const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 дней в мс
+        if (Date.now() - data.savedAt > maxAge) {
+            clearSession();
+            return false;
+        }
+        
+        username = data.username || "guest";
+        sessionId = data.sessionId || "";
+        accessToken = data.accessToken || "";
+        refreshToken = data.refreshToken || "";
+        authState = data.authState || AuthState.Guest;
+        userId = data.userId;
+        
+        return authState === AuthState.Authorized && accessToken !== "";
+    } catch (e) {
+        console.error("Ошибка загрузки сессии:", e);
+        clearSession();
+        return false;
+    }
+}
+
+function clearSession() {
+    localStorage.removeItem('stalknet_session');
+}
+
+// === Восстановление сессии при загрузке ===
+
+async function restoreSession() {
+    if (!loadSession()) {
+        return false;
+    }
+    
+    console.log("Восстановление сессии для:", username);
+    
+    // Проверяем валидность токена
+    try {
+        const resp = await fetch(API_BASE + "/api/auth/validate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: accessToken })
+        });
+        
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.valid) {
+                console.log("Сессия восстановлена успешно");
+                updateDisplayName(username);
+                return true;
+            }
+        }
+        
+        // Токен недействителен, пробуем refresh
+        return await refreshSession();
+    } catch (e) {
+        console.error("Ошибка восстановления сессии:", e);
+        clearSession();
+        return false;
+    }
+}
+
+async function refreshSession() {
+    if (!refreshToken) {
+        clearSession();
+        return false;
+    }
+    
+    try {
+        const resp = await fetch(API_BASE + "/api/auth/refresh", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refresh_token: refreshToken })
+        });
+        
+        if (resp.ok) {
+            const data = await resp.json();
+            accessToken = data.access_token;
+            refreshToken = data.refresh_token;
+            sessionId = data.session_id;
+            userId = data.user_id;
+            username = data.username;
+            authState = AuthState.Authorized;
+            
+            saveSession();
+            console.log("Сессия обновлена через refresh");
+            return true;
+        }
+    } catch (e) {
+        console.error("Ошибка обновления сессии:", e);
+    }
+    
+    clearSession();
+    return false;
+}
 
 // Обновление статуса подключения
 function updateStatus() {
@@ -172,6 +289,21 @@ async function checkServer() {
 // Запускаем проверку при загрузке
 checkServer();
 
+// Восстанавливаем сессию при загрузке
+(async function initSession() {
+    const restored = await restoreSession();
+    if (restored) {
+        updateDisplayName(username);
+        updateStatus();
+        // Подключаемся к WebSocket
+        connectWebSocket(userId, username);
+        addMessage("╭────────────────────────────────────────────╮", "system");
+        addMessage("│ Сессия восстановлена", "system");
+        addMessage("│ С возвращением, " + username + "!", "system");
+        addMessage("╰────────────────────────────────────────────╯", "system");
+    }
+})();
+
 setTimeout(() => {
     connected = true;
     updateStatus();
@@ -206,7 +338,15 @@ function addMessage(text, type, msgUsername = null, isReply = false, recipientUs
         usernameDisplay += "<span class=\"username\" onclick=\"setReplyTo('" + recipientUsername + "')\">> [" + recipientUsername + "]</span> ";
     }
 
-    div.innerHTML = "<span class=\"timestamp\">[" + time + "]</span>" + usernameDisplay + text;
+    // Экранируем HTML спецсимволы в тексте
+    const safeText = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+
+    div.innerHTML = "<span class=\"timestamp\">[" + time + "]</span>" + usernameDisplay + safeText;
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
 }
@@ -606,7 +746,11 @@ async function handleEnteringPassword(command, args) {
         refreshToken = tokenData.refresh_token;
         sessionId = tokenData.session_id;
         username = tokenData.username;
+        userId = tokenData.user_id;
         authState = AuthState.Authorized;
+        
+        // Сохраняем в localStorage
+        saveSession();
 
         // Обновляем отображение
         const shortSid = sessionId.length > 12 ? "..." + sessionId.slice(-12) : sessionId;
@@ -653,7 +797,11 @@ async function handleQuickLogin(user, pass) {
         refreshToken = tokenData.refresh_token;
         sessionId = tokenData.session_id;
         username = tokenData.username;
+        userId = tokenData.user_id;
         authState = AuthState.Authorized;
+        
+        // Сохраняем в localStorage
+        saveSession();
 
         updateDisplayName(username);
 
@@ -697,11 +845,13 @@ async function handleLogout() {
         // Игнорируем ошибки сети при logout
     }
 
-    // Очищаем сессию локально
+    // Очищаем сессию локально и в localStorage
+    clearSession();
     accessToken = "";
     refreshToken = "";
     sessionId = "";
     authState = AuthState.Guest;
+    userId = null;
 
     // Обновляем отображение на Guest
     updateDisplayName("Guest");
@@ -720,24 +870,31 @@ function handleCancel() {
         authState === AuthState.EnteringPassword) {
         cancelAuth();
     } else {
-        addMessage("Нечего отменять.", "system");
+        addMessage("Отмена.", "system");
     }
 }
 
 function cancelAuth() {
-    addMessage("Авторизация отменена.", "system");
+    addMessage("╭────────────────────────────────────────────╮", "system");
+    addMessage("│ Авторизация отменена", "system");
+    addMessage("╰────────────────────────────────────────────╯", "system");
     authState = AuthState.Guest;
     pendingUsername = "";
 }
 
-sendBtn.addEventListener("click", sendMessage);
-input.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") sendMessage();
+// Обработка Enter в поле ввода
+input.addEventListener("keydown", function(event) {
+    if (event.key === "Enter") {
+        sendMessage();
+    }
 });
 
-input.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowUp") {
-        e.preventDefault();
+// Обработка клика по кнопке отправки
+sendBtn.addEventListener("click", sendMessage);
+
+// История команд
+input.addEventListener("keydown", function(event) {
+    if (event.key === "ArrowUp") {
         if (historyIndex > 0) {
             if (historyIndex === messageHistory.length) {
                 currentInput = input.value;
@@ -745,24 +902,18 @@ input.addEventListener("keydown", (e) => {
             historyIndex--;
             input.value = messageHistory[historyIndex];
         }
-    } else if (e.key === "ArrowDown") {
-        e.preventDefault();
+    } else if (event.key === "ArrowDown") {
         if (historyIndex < messageHistory.length - 1) {
             historyIndex++;
             input.value = messageHistory[historyIndex];
-        } else if (historyIndex === messageHistory.length - 1) {
-            historyIndex++;
+        } else {
+            historyIndex = messageHistory.length;
             input.value = currentInput;
         }
     }
 });
 
-document.addEventListener("keydown", (e) => {
-    if (e.ctrlKey && e.key === "l") {
-        e.preventDefault();
-        messages.innerHTML = "";
-        addMessage("╭────────────────────────────────────╮", "system");
-        addMessage("│ Экран очищен", "system");
-        addMessage("╰────────────────────────────────────╯", "system");
-    }
+// Focus на поле ввода при загрузке
+window.addEventListener("load", function() {
+    input.focus();
 });

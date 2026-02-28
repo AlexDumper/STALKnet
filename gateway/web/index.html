@@ -2,11 +2,20 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>STALKnet</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☢</text></svg>">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            overflow: hidden !important;
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
+            height: 100%;
+        }
+        html::-webkit-scrollbar, body::-webkit-scrollbar {
+            display: none !important;
+        }
         body {
             background: #000;
             color: #00cc00;
@@ -14,23 +23,27 @@
             font-size: 18px;
             line-height: 1.2;
         }
-        .container { 
-            display: flex; 
-            flex-direction: column; 
-            height: 100vh; 
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            height: 100dvh;
             padding: 10px;
             max-width: 1200px;
             margin: 0 auto;
+            position: relative;
         }
         .header {
             background: #001100;
             color: #00cc00;
-            padding: 5px 10px;
+            padding: 8px 12px;
             display: flex;
             justify-content: space-between;
+            align-items: center;
             border-top: 1px solid #006600;
             border-bottom: 1px solid #006600;
             letter-spacing: 1px;
+            flex-shrink: 0;
         }
         .header-decorator {
             color: #006600;
@@ -62,18 +75,25 @@
         }
         .messages {
             flex: 1;
-            overflow-y: auto;
             border-left: 1px solid #006600;
             border-right: 1px solid #006600;
             padding: 5px;
-            margin: 5px 0;
             background: #001100;
             position: relative;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .messages::-webkit-scrollbar {
+            display: none;
         }
         .message {
             margin: 2px 0;
             padding-left: 10px;
             border-left: 1px dotted #004400;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
         .message.system { color: #009900; }
         .message.task { color: #99aa00; }
@@ -81,8 +101,9 @@
         .input-area {
             display: flex;
             gap: 10px;
-            padding: 5px 0;
+            padding: 8px 0;
             align-items: center;
+            flex-shrink: 0;
         }
         .input-label {
             color: #00cc00;
@@ -98,27 +119,29 @@
             color: #00cc00;
             font-weight: bold;
         }
-        #messageInput { 
-            flex: 1; 
-            background: #000; 
+        #messageInput {
+            flex: 1;
+            background: #000;
             border: none;
-            color: #00cc00; 
-            padding: 10px; 
-            font-size: 18px;
+            color: #00cc00;
+            padding: 10px;
+            font-size: 16px;
             font-family: monospace;
+            min-width: 0;
         }
         #messageInput:focus { outline: none; }
-        #sendBtn { 
+        #sendBtn {
             background: transparent;
-            color: #00cc00; 
-            padding: 10px 15px; 
-            cursor: pointer; 
+            color: #00cc00;
+            padding: 10px 15px;
+            cursor: pointer;
             font-family: monospace;
             font-size: 16px;
             border: none;
+            flex-shrink: 0;
         }
         #sendBtn:hover { color: #00ff00; }
-        .timestamp { color: #006600; margin-right: 10px; }
+        .timestamp { color: #006600; margin-right: 10px; white-space: nowrap; }
         .divider {
             color: #004400;
             text-align: center;
@@ -139,6 +162,71 @@
         }
         .message.reply {
             color: #00ff00;
+        }
+        
+        /* Адаптация для мобильных устройств */
+        @media (max-width: 768px) {
+            body {
+                font-size: 14px;
+            }
+            .container {
+                padding: 0;
+                height: 100vh;
+                height: 100dvh;
+            }
+            .header {
+                padding: 6px 8px;
+                font-size: 14px;
+            }
+            .messages {
+                border-left: none;
+                border-right: none;
+                padding: 8px;
+            }
+            .input-area {
+                padding: 6px 8px;
+                gap: 5px;
+            }
+            #messageInput {
+                font-size: 16px;
+                padding: 8px;
+            }
+            #sendBtn {
+                padding: 8px 12px;
+                font-size: 14px;
+            }
+            .input-label {
+                display: none;
+            }
+            .message {
+                font-size: 14px;
+            }
+            .timestamp {
+                font-size: 11px;
+                margin-right: 5px;
+            }
+        }
+        
+        /* Очень маленькие экраны */
+        @media (max-width: 480px) {
+            body {
+                font-size: 13px;
+            }
+            .header {
+                padding: 5px 6px;
+                font-size: 13px;
+            }
+            .header span {
+                font-size: 13px;
+            }
+            #messageInput {
+                font-size: 16px;
+                padding: 6px;
+            }
+            #sendBtn {
+                padding: 6px 10px;
+                font-size: 13px;
+            }
         }
     </style>
 </head>

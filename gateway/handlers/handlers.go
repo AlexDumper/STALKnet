@@ -11,11 +11,11 @@ import (
 	"github.com/stalknet/gateway/middleware"
 )
 
-//go:embed web/index.html web/app.js
-var webFS embed.FS
-
 // SetupRouter настраивает роутер gateway
-func SetupRouter(authURL, userURL, chatURL, taskURL string) *gin.Engine {
+func SetupRouter(
+	authURL, userURL, chatURL, taskURL string,
+	webFS embed.FS,
+) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
 
@@ -85,18 +85,23 @@ func SetupRouter(authURL, userURL, chatURL, taskURL string) *gin.Engine {
 		key := c.Param("key")
 		authState := c.Query("auth_state")
 		
-		// Проксируем запрос на Auth Service
+		// Создаем прокси на Auth Service
 		targetURL := authURL
 		if !strings.HasSuffix(targetURL, "/") {
 			targetURL += "/"
 		}
 		
-		redirectURL := targetURL + "api/content/" + key
+		remoteURL := targetURL + "api/content/" + key
 		if authState != "" {
-			redirectURL += "?auth_state=" + authState
+			remoteURL += "?auth_state=" + authState
 		}
 		
-		c.Redirect(http.StatusTemporaryRedirect, redirectURL)
+		proxy := httputil.NewSingleHostReverseProxy(mustParseURL(remoteURL))
+		proxy.Director = func(req *http.Request) {
+			req.URL = mustParseURL(remoteURL)
+			req.Host = mustParseURL(remoteURL).Host
+		}
+		proxy.ServeHTTP(c.Writer, c.Request)
 	})
 
 	return router
