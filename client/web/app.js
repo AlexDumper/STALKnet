@@ -1,4 +1,4 @@
-// STALKnet Web Client
+﻿// STALKnet Web Client
 const messages = document.getElementById("messages");
 const input = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
@@ -11,7 +11,7 @@ const versionDisplay = document.getElementById("versionDisplay");
 const API_BASE = window.location.origin;
 
 // Версия приложения
-const APP_VERSION = "0.1.3";
+const APP_VERSION = "0.1.5";
 
 // Отображение версии
 if (versionDisplay) {
