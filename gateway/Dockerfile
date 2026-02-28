@@ -7,7 +7,11 @@ RUN apk add --no-cache git
 COPY go.mod go.sum* ./
 RUN go mod download || true
 
-COPY . .
+COPY handlers/ ./handlers/
+COPY config/ ./config/
+COPY middleware/ ./middleware/
+COPY main.go ./main.go
+COPY web/ ./handlers/web/
 RUN CGO_ENABLED=0 GOOS=linux go build -o gateway .
 
 FROM alpine:3.18

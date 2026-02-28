@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	_ "github.com/lib/pq"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 
@@ -54,6 +55,7 @@ func SetupRouter(
 		auth.POST("/logout", authHandler.Logout)
 		auth.POST("/refresh", authHandler.Refresh)
 		auth.POST("/validate", authHandler.Validate)
+		auth.POST("/check-username", authHandler.CheckUsername)
 		auth.GET("/session", authHandler.GetSessionInfo)
 	}
 

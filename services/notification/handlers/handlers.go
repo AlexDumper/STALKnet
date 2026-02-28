@@ -51,3 +51,8 @@ func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 func (h *NotificationHandler) MarkAllAsRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "All notifications marked as read"})
 }
+
+func (h *NotificationHandler) HandleWebSocket(c *gin.Context) {
+	// WebSocket обработчик уведомлений
+	c.JSON(http.StatusOK, gin.H{"message": "WebSocket endpoint for notifications"})
+}

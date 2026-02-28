@@ -3,43 +3,47 @@ package hub
 import (
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
 // Client представляет подключённого клиента
 type Client struct {
-	hub      *Hub
-	conn     *websocket.Conn
-	userID   int
-	roomID   int
-	send     chan []byte
+	Hub      *Hub
+	Conn     *websocket.Conn
+	UserID   int
+	Username string
+	RoomID   int
+	Send     chan []byte
 }
 
 // Hub управляет всеми клиентскими соединениями
 type Hub struct {
-	clients    map[int]map[*Client]bool // roomID -> clients
-	register   chan *Client
-	unregister chan *Client
-	broadcast  chan *Message
-	mu         sync.RWMutex
+	Clients     map[int]map[*Client]bool // roomID -> clients
+	Register    chan *Client
+	Unregister  chan *Client
+	MessageChan chan *Message
+	Mu          sync.RWMutex
 }
 
 // Message сообщение для рассылки
 type Message struct {
-	RoomID  int             `json:"room_id"`
-	UserID  int             `json:"user_id"`
-	Content json.RawMessage `json:"content"`
-	Type    string          `json:"type"` // message, task, system
+	RoomID    int       `json:"room_id"`
+	UserID    int       `json:"user_id"`
+	Username  string    `json:"username"`
+	Content   string    `json:"content"`
+	Type      string    `json:"type"` // message, task, system
+	Timestamp time.Time `json:"timestamp"`
 }
 
 // NewHub создаёт новый хаб
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[int]map[*Client]bool),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		broadcast:  make(chan *Message, 256),
+		Clients:     make(map[int]map[*Client]bool),
+		Register:    make(chan *Client),
+		Unregister:  make(chan *Client),
+		MessageChan: make(chan *Message, 256),
 	}
 }
 
@@ -47,43 +51,78 @@ func NewHub() *Hub {
 func (h *Hub) Run() {
 	for {
 		select {
-		case client := <-h.register:
-			h.mu.Lock()
-			if _, ok := h.clients[client.roomID]; !ok {
-				h.clients[client.roomID] = make(map[*Client]bool)
+		case client := <-h.Register:
+			h.Mu.Lock()
+			if _, ok := h.Clients[client.RoomID]; !ok {
+				h.Clients[client.RoomID] = make(map[*Client]bool)
 			}
-			h.clients[client.roomID][client] = true
-			h.mu.Unlock()
+			h.Clients[client.RoomID][client] = true
+			h.Mu.Unlock()
 
-		case client := <-h.unregister:
-			h.mu.Lock()
-			if clients, ok := h.clients[client.roomID]; ok {
+		case client := <-h.Unregister:
+			h.Mu.Lock()
+			if clients, ok := h.Clients[client.RoomID]; ok {
 				delete(clients, client)
-				close(client.send)
+				close(client.Send)
 				if len(clients) == 0 {
-					delete(h.clients, client.roomID)
+					delete(h.Clients, client.RoomID)
 				}
 			}
-			h.mu.Unlock()
+			h.Mu.Unlock()
 
-		case message := <-h.broadcast:
-			h.mu.RLock()
-			if clients, ok := h.clients[message.RoomID]; ok {
+		case message := <-h.MessageChan:
+			h.Mu.RLock()
+			if clients, ok := h.Clients[message.RoomID]; ok {
+				// Сериализуем сообщение
+				msgData, _ := json.Marshal(message)
 				for client := range clients {
 					select {
-					case client.send <- message.Content:
+					case client.Send <- msgData:
 					default:
-						close(client.send)
+						close(client.Send)
 						delete(clients, client)
 					}
 				}
 			}
-			h.mu.RUnlock()
+			h.Mu.RUnlock()
 		}
 	}
 }
 
 // Broadcast отправляет сообщение всем клиентам в комнате
-func (h *Hub) Broadcast(roomID int, data []byte) {
-	h.broadcast <- &Message{RoomID: roomID, Content: data}
+func (h *Hub) Broadcast(roomID, userID int, username, content, msgType string) {
+	h.MessageChan <- &Message{
+		RoomID:    roomID,
+		UserID:    userID,
+		Username:  username,
+		Content:   content,
+		Type:      msgType,
+		Timestamp: time.Now(),
+	}
+}
+
+// GetClientsInRoom возвращает всех клиентов в комнате
+func (h *Hub) GetClientsInRoom(roomID int) []*Client {
+	h.Mu.RLock()
+	defer h.Mu.RUnlock()
+
+	if clients, ok := h.Clients[roomID]; ok {
+		result := make([]*Client, 0, len(clients))
+		for client := range clients {
+			result = append(result, client)
+		}
+		return result
+	}
+	return nil
+}
+
+// GetClientCountInRoom возвращает количество клиентов в комнате
+func (h *Hub) GetClientCountInRoom(roomID int) int {
+	h.Mu.RLock()
+	defer h.Mu.RUnlock()
+
+	if clients, ok := h.Clients[roomID]; ok {
+		return len(clients)
+	}
+	return 0
 }

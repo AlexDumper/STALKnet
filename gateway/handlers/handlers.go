@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"embed"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -9,10 +10,32 @@ import (
 	"github.com/stalknet/gateway/middleware"
 )
 
+//go:embed web/index.html web/app.js
+var webFS embed.FS
+
 // SetupRouter настраивает роутер gateway
 func SetupRouter(authURL, userURL, chatURL, taskURL string) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Recovery())
+
+	// Статические файлы веб-клиента
+	router.GET("/", func(c *gin.Context) {
+		data, err := webFS.ReadFile("web/index.html")
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.Data(200, "text/html; charset=utf-8", data)
+	})
+
+	router.GET("/app.js", func(c *gin.Context) {
+		data, err := webFS.ReadFile("web/app.js")
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.Data(200, "application/javascript", data)
+	})
 
 	// Прокси для Auth Service
 	authProxy := httputil.NewSingleHostReverseProxy(mustParseURL(authURL))

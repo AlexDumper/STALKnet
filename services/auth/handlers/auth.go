@@ -19,7 +19,7 @@ type AuthHandler struct {
 }
 
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=50"`
+	Username string `json:"username" binding:"required,min=2,max=50"`
 	Password string `json:"password" binding:"required,min=6,max=100"`
 	Email    string `json:"email"`
 }
@@ -104,7 +104,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+		return;
 	}
 
 	// Находим пользователя
@@ -159,6 +159,38 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		Username:     user.Username,
 		SessionID:    accessToken[:16], // Короткий ID сессии
 	})
+}
+
+// CheckUsername проверяет существование пользователя
+func (h *AuthHandler) CheckUsername(c *gin.Context) {
+	ctx := context.Background()
+
+	var req struct {
+		Username string `json:"username" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := h.repo.GetUserByUsername(ctx, req.Username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	if user != nil {
+		// Пользователь существует
+		c.JSON(http.StatusOK, gin.H{
+			"exists":   true,
+			"username": user.Username,
+		})
+	} else {
+		// Пользователь не найден
+		c.JSON(http.StatusOK, gin.H{
+			"exists": false,
+		})
+	}
 }
 
 // Logout завершает сессию

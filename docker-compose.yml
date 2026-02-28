@@ -38,8 +38,8 @@ services:
 
   gateway:
     build:
-      context: .
-      dockerfile: gateway/Dockerfile
+      context: ./gateway
+      dockerfile: Dockerfile
     container_name: stalknet-gateway
     ports:
       - "8080:8080"
@@ -59,8 +59,8 @@ services:
 
   auth:
     build:
-      context: .
-      dockerfile: services/auth/Dockerfile
+      context: ./services/auth
+      dockerfile: Dockerfile
     container_name: stalknet-auth
     environment:
       - DB_HOST=postgres
@@ -79,8 +79,8 @@ services:
 
   user:
     build:
-      context: .
-      dockerfile: services/user/Dockerfile
+      context: ./services/user
+      dockerfile: Dockerfile
     container_name: stalknet-user
     environment:
       - DB_HOST=postgres
@@ -98,9 +98,11 @@ services:
 
   chat:
     build:
-      context: .
-      dockerfile: services/chat/Dockerfile
+      context: ./services/chat
+      dockerfile: Dockerfile
     container_name: stalknet-chat
+    ports:
+      - "8083:8083"
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -117,8 +119,8 @@ services:
 
   task:
     build:
-      context: .
-      dockerfile: services/task/Dockerfile
+      context: ./services/task
+      dockerfile: Dockerfile
     container_name: stalknet-task
     environment:
       - DB_HOST=postgres
@@ -133,8 +135,8 @@ services:
 
   notification:
     build:
-      context: .
-      dockerfile: services/notification/Dockerfile
+      context: ./services/notification
+      dockerfile: Dockerfile
     container_name: stalknet-notification
     environment:
       - REDIS_HOST=redis

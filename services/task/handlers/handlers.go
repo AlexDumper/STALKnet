@@ -48,9 +48,9 @@ func NewTaskHandler(dbHost, dbPort, dbUser, dbPassword, dbName string) *TaskHand
 }
 
 func (h *TaskHandler) GetTasks(c *gin.Context) {
-	status := c.Query("status")
+	// status := c.Query("status")
 	// Фильтрация по статусу будет добавлена
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"tasks": []gin.H{
 			{"id": 1, "title": "Пример задачи", "status": "open"},

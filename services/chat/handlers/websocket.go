@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -29,44 +30,58 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 	// Получаем room_id и user_id из query параметров
 	roomIDStr := c.Query("room_id")
 	userIDStr := c.Query("user_id")
+	username := c.Query("username")
 
 	roomID, err := strconv.Atoi(roomIDStr)
 	if err != nil {
+		log.Printf("Invalid room_id: %v", err)
 		conn.Close()
 		return
 	}
 
 	userID, err := strconv.Atoi(userIDStr)
 	if err != nil {
+		log.Printf("Invalid user_id: %v", err)
+		conn.Close()
+		return
+	}
+
+	if username == "" {
+		log.Printf("Username required")
 		conn.Close()
 		return
 	}
 
 	client := &hub.Client{
-		hub:    h.hub,
-		conn:   conn,
-		userID: userID,
-		roomID: roomID,
-		send:   make(chan []byte, 256),
+		Hub:      h.hub,
+		Conn:     conn,
+		UserID:   userID,
+		Username: username,
+		RoomID:   roomID,
+		Send:     make(chan []byte, 256),
 	}
 
-	client.hub.register <- client
+	// Регистрируем клиента
+	client.Hub.Register <- client
+
+	// Отправляем приветственное сообщение
+	h.hub.Broadcast(roomID, 0, "system", username+" присоединился к чату", "system")
 
 	// Запускаем горутину для записи
-	go client.writePump()
+	go h.writePump(client)
 
 	// Запускаем горутину для чтения
-	go client.readPump()
+	go h.readPump(client)
 }
 
-func (c *Client) readPump() {
+func (h *ChatHandler) readPump(client *hub.Client) {
 	defer func() {
-		c.hub.unregister <- c
-		c.conn.Close()
+		client.Hub.Unregister <- client
+		client.Conn.Close()
 	}()
 
 	for {
-		_, message, err := c.conn.ReadMessage()
+		_, message, err := client.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("WebSocket read error: %v", err)
@@ -74,25 +89,35 @@ func (c *Client) readPump() {
 			break
 		}
 
-		// Обработка входящего сообщения
-		c.hub.Broadcast(c.roomID, message)
+		// Обрабатываем JSON сообщение
+		var msg struct {
+			Type    string `json:"type"`
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal(message, &msg); err != nil {
+			log.Printf("JSON parse error: %v", err)
+			continue
+		}
+
+		// Отправляем сообщение всем в комнате
+		h.hub.Broadcast(client.RoomID, client.UserID, client.Username, msg.Content, msg.Type)
 	}
 }
 
-func (c *Client) writePump() {
+func (h *ChatHandler) writePump(client *hub.Client) {
 	defer func() {
-		c.conn.Close()
+		client.Conn.Close()
 	}()
 
 	for {
 		select {
-		case message, ok := <-c.send:
+		case message, ok := <-client.Send:
 			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				client.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
-			w, err := c.conn.NextWriter(websocket.TextMessage)
+			w, err := client.Conn.NextWriter(websocket.TextMessage)
 			if err != nil {
 				return
 			}
