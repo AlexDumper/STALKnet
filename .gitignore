@@ -9,9 +9,6 @@
 go.work
 /vendor/
 
-# Dependencies
-go.sum
-
 # IDE
 .idea/
 .vscode/
