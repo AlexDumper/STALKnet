@@ -684,3 +684,4 @@ ws.send(JSON.stringify({
 | [USER_SESSIONS.md](USER_SESSIONS.md) | Сессии пользователей (ФЗ-374) |
 | [USER_EVENTS.md](USER_EVENTS.md) | События пользователей (ФЗ-374) |
 | [CHAT_MESSAGES_STORAGE.md](CHAT_MESSAGES_STORAGE.md) | Сохранение сообщений чата |
+| [WEB_CLIENT.md](WEB_CLIENT.md) | Веб-клиент |
