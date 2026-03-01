@@ -4,12 +4,9 @@
 
 **Compliance Service** — микросервис для обеспечения соблюдения **Федерального закона № 374-ФЗ от 06.07.2016** "О противодействии терроризму".
 
-Сервис отвечает за **сохранение всех сообщений пользователей** в базе данных с указанием:
-- Времени отправки (timestamp)
-- Имени пользователя
-- IP адреса и порта подключения
-- Текста сообщения
-- ID комнаты где было отправлено сообщение
+Сервис отвечает за **сохранение всех данных пользователей** в базе данных:
+- ✅ Сообщения чата (текст, IP, порт, timestamp)
+- ✅ События пользователей (регистрация, смена имени, IP, порт)
 
 ---
 
@@ -22,11 +19,13 @@
 > **Организаторы распространения информации** обязаны хранить на территории Российской Федерации:
 > - **Сообщения пользователей** — в течение **1 года**
 > - **Метаданные** (IP, время, идентификаторы) — в течение **1 года**
+> - **События регистрации и смены имени** — в течение **1 года**
 
 **Compliance Service обеспечивает:**
 - ✅ Сохранение всех сообщений пользователей
+- ✅ Сохранение событий пользователей (CREATE, UPDATE)
 - ✅ Хранение метаданных (IP, порт, timestamp)
-- ✅ Автоматическую очистку сообщений старше 1 года
+- ✅ Автоматическую очистку данных старше 1 года
 - ✅ Возможность предоставления данных по запросу уполномоченных органов
 
 ---
@@ -39,24 +38,34 @@
 │  (WebSocket)│  /api/compliance/  │ Service :8086    │
 └─────────────┘   messages          └────────┬─────────┘
                                              │
-                                             ▼
-                                      ┌──────────────┐
-                                      │  PostgreSQL  │
-                                      │chat_messages │
-                                      └──────────────┘
+                          ┌──────────────────┴──────────────────┐
+                          ▼                                     ▼
+                   ┌──────────────┐                     ┌──────────────┐
+                   │  PostgreSQL  │                     │  PostgreSQL  │
+                   │chat_messages │                     │ user_events  │
+                   └──────────────┘                     └──────────────┘
 ```
 
 ### Поток данных
 
+#### Сообщения чата:
 1. Пользователь отправляет сообщение через WebSocket
 2. Chat Service получает сообщение
 3. Chat Service **асинхронно** отправляет сообщение в Compliance Service
-4. Compliance Service сохраняет сообщение в PostgreSQL
+4. Compliance Service сохраняет сообщение в `chat_messages`
 5. Сообщение рассылается другим пользователям через WebSocket
+
+#### События пользователей:
+1. Пользователь регистрируется / меняет имя
+2. Auth Service создаёт / обновляет пользователя
+3. Auth Service **асинхронно** отправляет событие в Compliance Service
+4. Compliance Service сохраняет событие в `user_events`
 
 ---
 
-## 📊 Таблица базы данных
+## 📊 Таблицы базы данных
+
+### 1. Таблица `chat_messages` (сообщения чата)
 
 ```sql
 CREATE TABLE chat_messages (
@@ -73,8 +82,27 @@ CREATE TABLE chat_messages (
 );
 ```
 
+### 2. Таблица `user_events` (события пользователей)
+
+```sql
+CREATE TABLE user_events (
+    id SERIAL PRIMARY KEY,
+    event_type VARCHAR(20) NOT NULL,    -- CREATE, UPDATE
+    user_id INTEGER,                    -- ID пользователя
+    username VARCHAR(100) NOT NULL,     -- Имя пользователя
+    client_ip VARCHAR(45) NOT NULL,     -- IP адрес (IPv4/IPv6)
+    client_port INTEGER NOT NULL,       -- Порт подключения
+    old_username VARCHAR(100),          -- Старое имя (для UPDATE)
+    new_username VARCHAR(100),          -- Новое имя (для UPDATE)
+    metadata JSONB,                     -- Дополнительные данные
+    timestamp TIMESTAMP WITH TIME ZONE, -- Время события
+    created_at TIMESTAMP WITH TIME ZONE -- Время создания записи
+);
+```
+
 ### Индексы
 
+**chat_messages:**
 ```sql
 idx_chat_messages_room_id         -- Поиск по комнате
 idx_chat_messages_user_id         -- Поиск по пользователю
@@ -83,11 +111,23 @@ idx_chat_messages_username        -- Поиск по имени
 idx_chat_messages_room_timestamp  -- Поиск по комнате + времени (DESC)
 ```
 
+**user_events:**
+```sql
+idx_user_events_event_type        -- Поиск по типу события
+idx_user_events_user_id           -- Поиск по ID пользователя
+idx_user_events_username          -- Поиск по имени
+idx_user_events_timestamp         -- Поиск по времени
+idx_user_events_ip                -- Поиск по IP адресу
+idx_user_events_event_timestamp   -- Поиск по типу + времени (DESC)
+```
+
 ---
 
 ## 🔧 API Endpoints
 
-### POST /api/compliance/messages
+### 📝 Сообщения чата
+
+#### POST /api/compliance/messages
 
 **Сохранить сообщение**
 
@@ -115,7 +155,7 @@ idx_chat_messages_room_timestamp  -- Поиск по комнате + време
 
 ---
 
-### GET /api/compliance/rooms/:id/messages
+#### GET /api/compliance/rooms/:id/messages
 
 **Получить сообщения комнаты**
 
@@ -146,7 +186,7 @@ idx_chat_messages_room_timestamp  -- Поиск по комнате + време
 
 ---
 
-### GET /api/compliance/users/:id/messages
+#### GET /api/compliance/users/:id/messages
 
 **Получить сообщения пользователя**
 
@@ -164,14 +204,137 @@ idx_chat_messages_room_timestamp  -- Поиск по комнате + време
 
 ---
 
-### DELETE /api/compliance/cleanup
+### 👤 События пользователей
 
-**Удалить сообщения старше 1 года**
+#### POST /api/compliance/user-events
+
+**Сохранить событие пользователя**
+
+**Типы событий:**
+- `CREATE` — регистрация нового пользователя
+- `UPDATE` — смена имени пользователя
+
+**Request (CREATE):**
+```json
+{
+  "event_type": "CREATE",
+  "user_id": 5,
+  "username": "BG",
+  "client_ip": "192.168.1.100",
+  "client_port": 54321,
+  "timestamp": "2026-03-01T12:00:00Z"
+}
+```
+
+**Request (UPDATE):**
+```json
+{
+  "event_type": "UPDATE",
+  "user_id": 5,
+  "username": "NewBG",
+  "client_ip": "192.168.1.100",
+  "client_port": 54321,
+  "old_username": "BG",
+  "new_username": "NewBG",
+  "timestamp": "2026-03-01T12:30:00Z"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "message": "User event saved successfully",
+  "event_id": 1
+}
+```
+
+---
+
+#### GET /api/compliance/user-events
+
+**Получить все события пользователей**
+
+**Query Parameters:**
+- `event_type` (опционально) — фильтр по типу (CREATE или UPDATE)
+- `limit` (опционально) — количество (по умолчанию 50)
+- `offset` (опционально) — смещение
+
+**Request:**
+```bash
+curl "http://localhost:8086/api/compliance/user-events?event_type=CREATE&limit=10"
+```
 
 **Response:**
 ```json
 {
-  "message": "Old messages cleaned up",
+  "events": [
+    {
+      "id": 1,
+      "event_type": "CREATE",
+      "user_id": 5,
+      "username": "BG",
+      "client_ip": "192.168.1.100",
+      "client_port": 54321,
+      "timestamp": "2026-03-01T12:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+#### GET /api/compliance/user-events/:username
+
+**Получить события по имени пользователя**
+
+**Request:**
+```bash
+curl "http://localhost:8086/api/compliance/user-events/BG"
+```
+
+**Response:**
+```json
+{
+  "events": [
+    {
+      "id": 2,
+      "event_type": "UPDATE",
+      "user_id": 5,
+      "username": "NewBG",
+      "client_ip": "192.168.1.100",
+      "client_port": 54321,
+      "old_username": "BG",
+      "new_username": "NewBG",
+      "timestamp": "2026-03-01T12:30:00Z"
+    },
+    {
+      "id": 1,
+      "event_type": "CREATE",
+      "user_id": 5,
+      "username": "BG",
+      "client_ip": "192.168.1.100",
+      "client_port": 54321,
+      "timestamp": "2026-03-01T12:00:00Z"
+    }
+  ],
+  "username": "BG",
+  "total": 2
+}
+```
+
+---
+
+### 🗑️ Обслуживание
+
+#### DELETE /api/compliance/cleanup
+
+**Удалить данные старше 1 года**
+
+**Response:**
+```json
+{
+  "message": "Old data cleaned up",
   "deleted_count": 1500,
   "retention_days": 365
 }
@@ -179,7 +342,9 @@ idx_chat_messages_room_timestamp  -- Поиск по комнате + време
 
 ---
 
-### GET /api/compliance/stats
+### 📊 Статистика
+
+#### GET /api/compliance/stats
 
 **Получить статистику**
 
@@ -187,6 +352,7 @@ idx_chat_messages_room_timestamp  -- Поиск по комнате + време
 ```json
 {
   "total_messages": 15000,
+  "total_user_events": 500,
   "retention_days": 365,
   "compliance": "ФЗ-374 от 06.07.2016"
 }
@@ -242,13 +408,30 @@ docker exec -i stalknet-postgres psql -U stalknet -d stalknet -c \
   "SELECT COUNT(*) as total_messages FROM chat_messages;"
 ```
 
+### Проверка количества событий пользователей
+
+```bash
+docker exec -i stalknet-postgres psql -U stalknet -d stalknet -c \
+  "SELECT event_type, COUNT(*) as count FROM user_events GROUP BY event_type;"
+```
+
 ### Просмотр последних сообщений
 
 ```bash
 docker exec -i stalknet-postgres psql -U stalknet -d stalknet -c \
-  "SELECT username, content, client_ip, timestamp 
-   FROM chat_messages 
-   ORDER BY timestamp DESC 
+  "SELECT username, content, client_ip, timestamp
+   FROM chat_messages
+   ORDER BY timestamp DESC
+   LIMIT 10;"
+```
+
+### Просмотр последних событий пользователей
+
+```bash
+docker exec -i stalknet-postgres psql -U stalknet -d stalknet -c \
+  "SELECT event_type, username, client_ip, timestamp
+   FROM user_events
+   ORDER BY timestamp DESC
    LIMIT 10;"
 ```
 
@@ -319,13 +502,15 @@ services:
 
 ## 📝 Примеры использования
 
-### 1. Получить все сообщения пользователя
+### Сообщения чата
+
+#### 1. Получить все сообщения пользователя
 
 ```bash
 curl "http://localhost:8086/api/compliance/users/5/messages?limit=100"
 ```
 
-### 2. Найти сообщения по IP
+#### 2. Найти сообщения по IP
 
 ```sql
 SELECT username, content, timestamp
@@ -334,10 +519,10 @@ WHERE client_ip = '192.168.1.100'
 ORDER BY timestamp DESC;
 ```
 
-### 3. Статистика по дням
+#### 3. Статистика по дням
 
 ```sql
-SELECT 
+SELECT
   DATE(timestamp) as date,
   COUNT(*) as messages_count
 FROM chat_messages
@@ -345,7 +530,7 @@ GROUP BY DATE(timestamp)
 ORDER BY date DESC;
 ```
 
-### 4. Экспорт данных за период
+#### 4. Экспорт данных за период
 
 ```sql
 COPY (
@@ -358,12 +543,76 @@ COPY (
 
 ---
 
+### События пользователей
+
+#### 1. Получить все регистрации за последний месяц
+
+```sql
+SELECT username, client_ip, timestamp
+FROM user_events
+WHERE event_type = 'CREATE'
+  AND timestamp >= NOW() - INTERVAL '30 days'
+ORDER BY timestamp DESC;
+```
+
+#### 2. Получить все смены имён пользователя
+
+```sql
+SELECT old_username, new_username, client_ip, timestamp
+FROM user_events
+WHERE event_type = 'UPDATE'
+  AND username = 'BG'
+ORDER BY timestamp DESC;
+```
+
+#### 3. Получить полную историю пользователя
+
+```sql
+SELECT
+  event_type,
+  username,
+  old_username,
+  new_username,
+  client_ip,
+  timestamp
+FROM user_events
+WHERE user_id = 5
+ORDER BY timestamp DESC;
+```
+
+#### 4. Найти все события с IP адреса
+
+```sql
+SELECT username, event_type, timestamp
+FROM user_events
+WHERE client_ip = '192.168.1.100'
+ORDER BY timestamp DESC;
+```
+
+#### 5. Статистика событий по типам
+
+```sql
+SELECT
+  event_type,
+  COUNT(*) as count,
+  DATE(MIN(timestamp)) as first_event,
+  DATE(MAX(timestamp)) as last_event
+FROM user_events
+GROUP BY event_type;
+```
+
+---
+
 ## ⚠️ Важные замечания
 
 1. **Не удаляйте Compliance Service** — это нарушит требования ФЗ-374
 2. **Регулярно делайте бэкапы** — данные должны храниться 1 год
-3. **Мониторьте объем** — таблица может расти быстро
+3. **Мониторьте объем** — таблицы могут расти быстро
 4. **Настройте мониторинг** — отслеживайте ошибки сохранения
+5. **Два типа данных:**
+   - `chat_messages` — сообщения чата
+   - `user_events` — события пользователей (регистрация, смена имени)
+6. **Асинхронная отправка** — события отправляются асинхронно и не блокируют работу других сервисов
 
 ---
 
@@ -377,7 +626,7 @@ COPY (
 
 ---
 
-**Дата создания:** 2026-03-01  
-**Версия:** v0.1.8  
-**Статус:** ✅ Работает  
+**Дата обновления:** 2026-03-01
+**Версия:** v0.1.9
+**Статус:** ✅ Работает
 **Соответствие:** ФЗ-374 от 06.07.2016
