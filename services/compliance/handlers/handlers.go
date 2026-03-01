@@ -221,10 +221,12 @@ func (h *ComplianceHandler) GetUserMessages(c *gin.Context) {
 }
 
 // CleanupOldMessages удаляет сообщения старше 1 года (ФЗ-374)
+// Примечание: user_events НЕ очищается - данные о регистрации и смене имён накапливаются бессрочно
 func (h *ComplianceHandler) CleanupOldMessages(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Удаляем только сообщения чата старше 1 года
 	count, err := h.repo.DeleteOldMessages(ctx, 365*24*time.Hour) // 1 год
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cleanup old messages"})
@@ -232,9 +234,10 @@ func (h *ComplianceHandler) CleanupOldMessages(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":         "Old messages cleaned up",
+		"message":         "Old chat messages cleaned up (user_events preserved)",
 		"deleted_count":   count,
 		"retention_days":  365,
+		"user_events":     "preserved indefinitely",
 	})
 }
 

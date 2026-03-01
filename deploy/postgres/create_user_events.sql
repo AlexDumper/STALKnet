@@ -1,5 +1,6 @@
 -- Создание таблицы для хранения событий пользователей (ФЗ-374)
 -- События: регистрация, смена имени
+-- ВАЖНО: Данные в этой таблице НЕ очищаются и накапливаются бессрочно!
 
 CREATE TABLE IF NOT EXISTS user_events (
     id SERIAL PRIMARY KEY,
@@ -24,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_user_events_ip ON user_events(client_ip);
 CREATE INDEX IF NOT EXISTS idx_user_events_event_timestamp ON user_events(event_type, timestamp DESC);
 
 -- Комментарии к таблице
-COMMENT ON TABLE user_events IS 'События пользователей для соблюдения ФЗ-374';
+COMMENT ON TABLE user_events IS 'События пользователей для соблюдения ФЗ-374. Данные НЕ очищаются!';
 COMMENT ON COLUMN user_events.event_type IS 'Тип события: CREATE (регистрация), UPDATE (смена имени)';
 COMMENT ON COLUMN user_events.user_id IS 'ID пользователя';
 COMMENT ON COLUMN user_events.username IS 'Текущее имя пользователя';
@@ -34,16 +35,24 @@ COMMENT ON COLUMN user_events.old_username IS 'Старое имя (для UPDAT
 COMMENT ON COLUMN user_events.new_username IS 'Новое имя (для UPDATE)';
 COMMENT ON COLUMN user_events.metadata IS 'Дополнительные данные в формате JSON';
 
+-- ⚠️ ВАЖНО: Данные в таблице user_events НЕ ПОДЛЕЖАТ очистке!
+-- Сведения о регистрации пользователей и смене имён накапливаются бессрочно
+-- для соблюдения требований ФЗ-374 и возможного предоставления уполномоченным органам.
+
 -- Примеры запросов:
 -- Получить все события пользователя
 -- SELECT * FROM user_events WHERE user_id = 5 ORDER BY timestamp DESC;
 
 -- Получить все регистрации за период
--- SELECT username, client_ip, timestamp FROM user_events 
+-- SELECT username, client_ip, timestamp FROM user_events
 -- WHERE event_type = 'CREATE' AND timestamp >= NOW() - INTERVAL '30 days'
 -- ORDER BY timestamp DESC;
 
 -- Получить все смены имён
--- SELECT username, old_username, new_username, client_ip, timestamp 
+-- SELECT username, old_username, new_username, client_ip, timestamp
 -- FROM user_events WHERE event_type = 'UPDATE'
 -- ORDER BY timestamp DESC;
+
+-- Получить полную историю пользователя (все события)
+-- SELECT event_type, username, old_username, new_username, client_ip, timestamp
+-- FROM user_events WHERE user_id = 5 ORDER BY timestamp DESC;
