@@ -64,6 +64,8 @@ services:
       context: ./services/auth
       dockerfile: Dockerfile
     container_name: stalknet-auth
+    ports:
+      - "8081:8081"
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432

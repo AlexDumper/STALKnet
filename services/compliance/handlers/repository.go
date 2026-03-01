@@ -161,7 +161,7 @@ func (r *ComplianceRepository) GetTotalMessages(ctx context.Context) (int64, err
 func (r *ComplianceRepository) SaveUserEvent(ctx context.Context, event *UserEvent) error {
 	query := `
 		INSERT INTO user_events (event_type, user_id, username, client_ip, client_port, old_username, new_username, metadata, timestamp)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE(NULLIF($8, ''), '{}')::jsonb, $9)
 		RETURNING id
 	`
 
