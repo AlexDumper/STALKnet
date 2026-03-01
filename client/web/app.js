@@ -496,13 +496,56 @@ async function handleCommand(cmd) {
                 addMessage("---", "system");
                 addMessage("Использование: /nick <имя>", "system");
                 addMessage("---", "system");
-            } else {
-                const oldNick = username;
-                username = args[0];
-                userDisplay.innerHTML = "+ user: " + username + " +";
+                return;
+            }
+            
+            const newUsername = args[0];
+            
+            // Проверка длины имени
+            if (newUsername.length < 2) {
                 addMessage("---", "system");
-                addMessage("Имя изменено с '" + oldNick + "' на '" + username + "'", "system");
+                addMessage("Ошибка: имя слишком короткое!", "system");
+                addMessage("Требуется минимум 2 символа", "system");
                 addMessage("---", "system");
+                return;
+            }
+            
+            // Отправляем запрос на смену имени
+            try {
+                const resp = await fetch(API_BASE + "/api/auth/update-username", {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + accessToken
+                    },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        new_username: newUsername
+                    })
+                });
+                
+                const data = await resp.json();
+                
+                if (resp.ok) {
+                    const oldNick = username;
+                    username = newUsername;
+                    
+                    // Сохраняем сессию с новым именем
+                    saveSession();
+                    
+                    // Обновляем отображение
+                    updateDisplayName(username);
+                    
+                    addMessage("---", "system");
+                    addMessage("Имя изменено с '" + oldNick + "' на '" + username + "'", "system");
+                    addMessage("---", "system");
+                } else {
+                    addMessage("---", "system");
+                    addMessage("Ошибка: " + (data.error || "Не удалось изменить имя"), "system");
+                    addMessage("---", "system");
+                }
+            } catch (e) {
+                addMessage("Ошибка соединения с сервером: " + e.message, "system");
             }
             break;
         case "/mock":
