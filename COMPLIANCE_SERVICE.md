@@ -7,6 +7,7 @@
 Сервис отвечает за **сохранение всех данных пользователей** в базе данных:
 - ✅ Сообщения чата (текст, IP, порт, timestamp)
 - ✅ События пользователей (регистрация, смена имени, IP, порт)
+- ✅ Сессии пользователей (LOGIN, LOGOUT, DISCONNECT, IP, порт, длительность)
 
 ---
 
@@ -20,12 +21,14 @@
 > - **Сообщения пользователей** — в течение **1 года**
 > - **Метаданные** (IP, время, идентификаторы) — в течение **1 года**
 > - **События регистрации и смены имени** — в течение **1 года**
+> - **Сессии пользователей** (вход/выход) — в течение **1 года**
 
 **Compliance Service обеспечивает:**
 - ✅ Сохранение всех сообщений пользователей
 - ✅ Сохранение событий пользователей (CREATE, UPDATE)
-- ✅ Хранение метаданных (IP, порт, timestamp)
-- ✅ Автоматическую очистку данных старше 1 года
+- ✅ Сохранение сессий пользователей (LOGIN, LOGOUT, DISCONNECT)
+- ✅ Хранение метаданных (IP, порт, timestamp, длительность сессии)
+- ✅ Автоматическую очистку данных старше 1 года (кроме user_events)
 - ✅ Возможность предоставления данных по запросу уполномоченных органов
 
 ---
@@ -44,6 +47,18 @@
                    │  PostgreSQL  │                     │  PostgreSQL  │
                    │chat_messages │                     │ user_events  │
                    └──────────────┘                     └──────────────┘
+                                             
+┌─────────────┐     HTTP POST      ┌──────────────────┐
+│ Auth Service│ ─────────────────► │ Compliance       │
+│  (Login)    │  /api/compliance/  │ Service :8086    │
+└─────────────┘   sessions          └────────┬─────────┘
+                                             │
+                          ┌──────────────────┴──────────────────┐
+                          ▼                                     ▼
+                   ┌──────────────┐                     ┌──────────────┐
+                   │  PostgreSQL  │                     │  PostgreSQL  │
+                   │user_sessions │                     │ user_events  │
+                   └──────────────┘                     └──────────────┘
 ```
 
 ### Поток данных
@@ -60,6 +75,12 @@
 2. Auth Service создаёт / обновляет пользователя
 3. Auth Service **асинхронно** отправляет событие в Compliance Service
 4. Compliance Service сохраняет событие в `user_events`
+
+#### Сессии пользователей:
+1. **LOGIN**: Пользователь входит в систему → Auth Service отправляет в Compliance
+2. **LOGOUT**: Пользователь выходит → Auth Service отправляет в Compliance
+3. **DISCONNECT**: WebSocket разрыв → Chat Service отправляет в Compliance
+4. Compliance Service сохраняет сессию в `user_sessions`
 
 ---
 
@@ -99,6 +120,29 @@ CREATE TABLE user_events (
     created_at TIMESTAMP WITH TIME ZONE -- Время создания записи
 );
 ```
+
+### 3. Таблица `user_sessions` (сессии пользователей)
+
+```sql
+CREATE TABLE user_sessions (
+    id SERIAL PRIMARY KEY,
+    event_type VARCHAR(20) NOT NULL,    -- LOGIN, LOGOUT, DISCONNECT
+    user_id INTEGER NOT NULL,           -- ID пользователя
+    username VARCHAR(100) NOT NULL,     -- Имя пользователя
+    session_id VARCHAR(255),            -- ID сессии (JWT token ID)
+    client_ip VARCHAR(45) NOT NULL,     -- IP адрес (IPv4/IPv6)
+    client_port INTEGER NOT NULL,       -- Порт подключения
+    user_agent TEXT,                    -- User agent (опционально)
+    login_time TIMESTAMP WITH TIME ZONE,-- Время входа
+    logout_time TIMESTAMP WITH TIME ZONE,-- Время выхода
+    duration_seconds INTEGER            -- Длительность сессии в секундах
+);
+```
+
+**Срок хранения:**
+- `chat_messages` — 1 год (автоматическая очистка)
+- `user_events` — **бессрочно** (НЕ очищается)
+- `user_sessions` — 1 год (автоматическая очистка)
 
 ### Индексы
 
@@ -245,6 +289,140 @@ idx_user_events_event_timestamp   -- Поиск по типу + времени (
 {
   "message": "User event saved successfully",
   "event_id": 1
+}
+```
+
+---
+
+### 🔐 Сессии пользователей
+
+#### POST /api/compliance/sessions
+
+**Сохранить сессию пользователя (LOGIN)**
+
+**Request:**
+```json
+{
+  "event_type": "LOGIN",
+  "user_id": 5,
+  "username": "BG",
+  "session_id": "BG_abc123def456",
+  "client_ip": "192.168.1.100",
+  "client_port": 54321,
+  "user_agent": "Mozilla/5.0...",
+  "login_time": "2026-03-01T12:00:00Z"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "message": "Session saved successfully",
+  "session_id": 1
+}
+```
+
+**Примечание:** Для LOGOUT и DISCONNECT используется тот же endpoint с `event_type: "LOGOUT"` или `event_type: "DISCONNECT"`.
+
+---
+
+#### GET /api/compliance/sessions
+
+**Получить все сессии**
+
+**Query Parameters:**
+- `event_type` (опционально) — фильтр по типу (LOGIN, LOGOUT, DISCONNECT)
+- `limit` (опционально) — количество (по умолчанию 50)
+- `offset` (опционально) — смещение
+
+**Request:**
+```bash
+curl "http://localhost:8086/api/compliance/sessions?event_type=LOGIN&limit=10"
+```
+
+**Response:**
+```json
+{
+  "sessions": [
+    {
+      "id": 1,
+      "event_type": "LOGIN",
+      "user_id": 5,
+      "username": "BG",
+      "session_id": "BG_abc123def456",
+      "client_ip": "192.168.1.100",
+      "client_port": 54321,
+      "login_time": "2026-03-01T12:00:00Z",
+      "logout_time": null,
+      "duration_seconds": null
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+#### GET /api/compliance/sessions/active
+
+**Получить активные сессии** (без logout_time)
+
+**Response:**
+```json
+{
+  "sessions": [...],
+  "total": 5
+}
+```
+
+---
+
+#### GET /api/compliance/sessions/user/:userId
+
+**Получить сессии конкретного пользователя**
+
+**Request:**
+```bash
+curl "http://localhost:8086/api/compliance/sessions/user/5"
+```
+
+**Response:**
+```json
+{
+  "sessions": [
+    {
+      "id": 10,
+      "event_type": "LOGIN",
+      "user_id": 5,
+      "username": "BG",
+      "session_id": "BG_abc123",
+      "client_ip": "192.168.1.100",
+      "client_port": 54321,
+      "login_time": "2026-03-01T14:00:00Z",
+      "logout_time": "2026-03-01T15:00:00Z",
+      "duration_seconds": 3600
+    }
+  ],
+  "user_id": 5,
+  "total": 1
+}
+```
+
+---
+
+#### PUT /api/compliance/sessions/:id/logout
+
+**Обновить сессию при LOGOUT** (устанавливает logout_time и duration_seconds)
+
+**Request:**
+```bash
+curl -X PUT "http://localhost:8086/api/compliance/sessions/10/logout"
+```
+
+**Response:**
+```json
+{
+  "message": "Logout recorded successfully"
 }
 ```
 

@@ -126,6 +126,9 @@ func getClientIPAndPort(r *http.Request) (string, int) {
 
 func (h *ChatHandler) readPump(client *hub.Client, clientIP string, clientPort int) {
 	defer func() {
+		// Отправляем событие DISCONNECT при разрыве соединения
+		go sendDisconnectEventToCompliance(client.UserID, client.Username, clientIP, clientPort)
+		
 		client.Hub.Unregister <- client
 		client.Conn.Close()
 	}()
@@ -209,6 +212,55 @@ func sendToComplianceService(roomID, userID int, username, content, clientIP str
 		log.Printf("Compliance service returned status: %d", resp.StatusCode)
 	} else {
 		log.Printf("Message sent to compliance service: user=%s, room=%d", username, roomID)
+	}
+}
+
+// sendDisconnectEventToCompliance отправляет событие DISCONNECT в Compliance Service
+func sendDisconnectEventToCompliance(userID int, username, clientIP string, clientPort int) {
+	event := struct {
+		EventType  string    `json:"event_type"`
+		UserID     int       `json:"user_id"`
+		Username   string    `json:"username"`
+		ClientIP   string    `json:"client_ip"`
+		ClientPort int       `json:"client_port"`
+		LoginTime  time.Time `json:"login_time"`
+	}{
+		EventType:  "DISCONNECT",
+		UserID:     userID,
+		Username:   username,
+		ClientIP:   clientIP,
+		ClientPort: clientPort,
+		LoginTime:  time.Now(),
+	}
+
+	jsonData, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("Failed to marshal disconnect event: %v", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", complianceServiceURL+"/api/compliance/sessions", bytes.NewReader(jsonData))
+	if err != nil {
+		log.Printf("Failed to create compliance request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to send disconnect event to compliance service: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		log.Printf("Compliance service returned status: %d", resp.StatusCode)
+	} else {
+		log.Printf("Disconnect event sent to compliance: user=%s, ip=%s", username, clientIP)
 	}
 }
 

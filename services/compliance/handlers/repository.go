@@ -278,3 +278,196 @@ func (r *ComplianceRepository) GetUserEventsByUsername(ctx context.Context, user
 
 	return events, nil
 }
+
+// SaveSession сохраняет сессию пользователя (LOGIN)
+func (r *ComplianceRepository) SaveSession(ctx context.Context, session *UserSession) error {
+	query := `
+		INSERT INTO user_sessions (event_type, user_id, username, session_id, client_ip, client_port, user_agent, login_time)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id
+	`
+
+	err := r.db.QueryRowContext(ctx, query,
+		session.EventType,
+		session.UserID,
+		session.Username,
+		session.SessionID,
+		session.ClientIP,
+		session.ClientPort,
+		session.UserAgent,
+		session.LoginTime,
+	).Scan(&session.ID)
+
+	if err != nil {
+		log.Printf("Failed to save user session: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+// GetSessions получает все сессии
+func (r *ComplianceRepository) GetSessions(ctx context.Context, eventType string, limit, offset int) ([]UserSession, error) {
+	var query string
+	var rows *sql.Rows
+	var err error
+
+	if eventType != "" {
+		query = `
+			SELECT id, event_type, user_id, username, session_id, client_ip, client_port, user_agent, login_time, logout_time, duration_seconds
+			FROM user_sessions
+			WHERE event_type = $1
+			ORDER BY login_time DESC
+			LIMIT $2 OFFSET $3
+		`
+		rows, err = r.db.QueryContext(ctx, query, eventType, limit, offset)
+	} else {
+		query = `
+			SELECT id, event_type, user_id, username, session_id, client_ip, client_port, user_agent, login_time, logout_time, duration_seconds
+			FROM user_sessions
+			ORDER BY login_time DESC
+			LIMIT $1 OFFSET $2
+		`
+		rows, err = r.db.QueryContext(ctx, query, limit, offset)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []UserSession
+	for rows.Next() {
+		var session UserSession
+		var logoutTime sql.NullTime
+		var duration sql.NullInt64
+		err := rows.Scan(
+			&session.ID,
+			&session.EventType,
+			&session.UserID,
+			&session.Username,
+			&session.SessionID,
+			&session.ClientIP,
+			&session.ClientPort,
+			&session.UserAgent,
+			&session.LoginTime,
+			&logoutTime,
+			&duration,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if logoutTime.Valid {
+			session.LogoutTime = logoutTime.Time
+		}
+		if duration.Valid {
+			session.DurationSeconds = int(duration.Int64)
+		}
+		sessions = append(sessions, session)
+	}
+
+	return sessions, nil
+}
+
+// GetActiveSessions получает активные сессии (без logout_time)
+func (r *ComplianceRepository) GetActiveSessions(ctx context.Context) ([]UserSession, error) {
+	query := `
+		SELECT id, event_type, user_id, username, session_id, client_ip, client_port, user_agent, login_time, logout_time, duration_seconds
+		FROM user_sessions
+		WHERE logout_time IS NULL
+		ORDER BY login_time DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []UserSession
+	for rows.Next() {
+		var session UserSession
+		var logoutTime sql.NullTime
+		var duration sql.NullInt64
+		err := rows.Scan(
+			&session.ID,
+			&session.EventType,
+			&session.UserID,
+			&session.Username,
+			&session.SessionID,
+			&session.ClientIP,
+			&session.ClientPort,
+			&session.UserAgent,
+			&session.LoginTime,
+			&logoutTime,
+			&duration,
+		)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, session)
+	}
+
+	return sessions, nil
+}
+
+// GetUserSessions получает сессии конкретного пользователя
+func (r *ComplianceRepository) GetUserSessions(ctx context.Context, userID int, limit int) ([]UserSession, error) {
+	query := `
+		SELECT id, event_type, user_id, username, session_id, client_ip, client_port, user_agent, login_time, logout_time, duration_seconds
+		FROM user_sessions
+		WHERE user_id = $1
+		ORDER BY login_time DESC
+		LIMIT $2
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []UserSession
+	for rows.Next() {
+		var session UserSession
+		var logoutTime sql.NullTime
+		var duration sql.NullInt64
+		err := rows.Scan(
+			&session.ID,
+			&session.EventType,
+			&session.UserID,
+			&session.Username,
+			&session.SessionID,
+			&session.ClientIP,
+			&session.ClientPort,
+			&session.UserAgent,
+			&session.LoginTime,
+			&logoutTime,
+			&duration,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if logoutTime.Valid {
+			session.LogoutTime = logoutTime.Time
+		}
+		if duration.Valid {
+			session.DurationSeconds = int(duration.Int64)
+		}
+		sessions = append(sessions, session)
+	}
+
+	return sessions, nil
+}
+
+// UpdateLogout обновляет сессию при LOGOUT
+func (r *ComplianceRepository) UpdateLogout(ctx context.Context, sessionID int) error {
+	query := `
+		UPDATE user_sessions
+		SET logout_time = NOW(),
+		    duration_seconds = EXTRACT(EPOCH FROM (NOW() - login_time))::INTEGER
+		WHERE id = $1
+	`
+	_, err := r.db.ExecContext(ctx, query, sessionID)
+	return err
+}

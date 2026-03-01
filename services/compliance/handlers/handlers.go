@@ -6,11 +6,27 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/gin-gonic/gin"
 )
+
+// UserSession представляет сессию пользователя
+type UserSession struct {
+	ID              int       `json:"id"`
+	EventType       string    `json:"event_type"` // LOGIN, LOGOUT, DISCONNECT
+	UserID          int       `json:"user_id"`
+	Username        string    `json:"username"`
+	SessionID       string    `json:"session_id,omitempty"`
+	ClientIP        string    `json:"client_ip"`
+	ClientPort      int       `json:"client_port"`
+	UserAgent       string    `json:"user_agent,omitempty"`
+	LoginTime       time.Time `json:"login_time"`
+	LogoutTime      time.Time `json:"logout_time,omitempty"`
+	DurationSeconds int       `json:"duration_seconds,omitempty"`
+}
 
 // UserEvent представляет событие пользователя
 type UserEvent struct {
@@ -77,6 +93,13 @@ func SetupRouter(dbHost, dbPort, dbUser, dbPassword, dbName string) *gin.Engine 
 		api.POST("/user-events", complianceHandler.SaveUserEvent)
 		api.GET("/user-events", complianceHandler.GetUserEvents)
 		api.GET("/user-events/:username", complianceHandler.GetUserEventsByUsername)
+		
+		// Сессии пользователей
+		api.POST("/sessions", complianceHandler.SaveSession)
+		api.GET("/sessions", complianceHandler.GetSessions)
+		api.GET("/sessions/active", complianceHandler.GetActiveSessions)
+		api.GET("/sessions/user/:userId", complianceHandler.GetUserSessions)
+		api.PUT("/sessions/:id/logout", complianceHandler.UpdateLogout)
 		
 		// Общее
 		api.DELETE("/cleanup", complianceHandler.CleanupOldMessages)
@@ -344,5 +367,137 @@ func (h *ComplianceHandler) GetUserEventsByUsername(c *gin.Context) {
 		"events":  events,
 		"username": username,
 		"total":   len(events),
+	})
+}
+
+// SaveSession сохраняет сессию пользователя (LOGIN)
+func (h *ComplianceHandler) SaveSession(c *gin.Context) {
+	var session UserSession
+	if err := c.ShouldBindJSON(&session); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Валидация
+	if session.EventType != "LOGIN" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Event type must be LOGIN"})
+		return
+	}
+	if session.Username == "" || session.ClientIP == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username and client_ip required"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := h.repo.SaveSession(ctx, &session); err != nil {
+		log.Printf("Failed to save user session: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save session"})
+		return
+	}
+
+	log.Printf("Session saved: type=%s, username=%s, ip=%s", session.EventType, session.Username, session.ClientIP)
+	c.JSON(http.StatusCreated, gin.H{
+		"message":   "Session saved successfully",
+		"session_id": session.ID,
+	})
+}
+
+// GetSessions получает все сессии
+func (h *ComplianceHandler) GetSessions(c *gin.Context) {
+	eventType := c.Query("event_type")
+	limit := 50
+	offset := 0
+	
+	if l := c.Query("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
+	if o := c.Query("offset"); o != "" {
+		fmt.Sscanf(o, "%d", &offset)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	sessions, err := h.repo.GetSessions(ctx, eventType, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get sessions"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"sessions": sessions,
+		"total":    len(sessions),
+	})
+}
+
+// GetActiveSessions получает активные сессии (без logout_time)
+func (h *ComplianceHandler) GetActiveSessions(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	sessions, err := h.repo.GetActiveSessions(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get active sessions"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"sessions": sessions,
+		"total":    len(sessions),
+	})
+}
+
+// GetUserSessions получает сессии конкретного пользователя
+func (h *ComplianceHandler) GetUserSessions(c *gin.Context) {
+	userIDStr := c.Param("userId")
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user_id"})
+		return
+	}
+
+	limit := 50
+	if l := c.Query("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	sessions, err := h.repo.GetUserSessions(ctx, userID, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user sessions"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"sessions": sessions,
+		"user_id":  userID,
+		"total":    len(sessions),
+	})
+}
+
+// UpdateLogout обновляет сессию при LOGOUT (устанавливает logout_time)
+func (h *ComplianceHandler) UpdateLogout(c *gin.Context) {
+	sessionIDStr := c.Param("id")
+	sessionID, err := strconv.Atoi(sessionIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid session_id"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := h.repo.UpdateLogout(ctx, sessionID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update logout"})
+		return
+	}
+
+	log.Printf("Session %d logout updated", sessionID)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Logout recorded successfully",
 	})
 }

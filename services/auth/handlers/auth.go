@@ -178,6 +178,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Генерируем уникальный session ID на основе username и password hash
 	sessionID := generateSessionID(user.Username, user.PasswordHash)
 
+	// Отправляем событие LOGIN в Compliance Service
+	go sendSessionEventToCompliance("LOGIN", user.ID, user.Username, sessionID, c.Request)
+
 	c.JSON(http.StatusOK, TokenResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -249,10 +252,18 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		token = token[7:]
 	}
 
+	// Получаем сессию перед удалением для отправки события
+	session, _ := h.repo.GetSession(ctx, token)
+
 	err := h.repo.DeleteSession(ctx, token)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to logout"})
 		return
+	}
+
+	// Отправляем событие LOGOUT в Compliance Service
+	if session != nil {
+		go sendSessionEventToCompliance("LOGOUT", session.UserID, session.Username, token, c.Request)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
@@ -606,4 +617,57 @@ func getClientIPAndPort(r *http.Request) (string, int) {
 	}
 
 	return host, port
+}
+
+// sendSessionEventToCompliance отправляет событие сессии в Compliance Service
+func sendSessionEventToCompliance(eventType string, userID int, username, sessionID string, r *http.Request) {
+	clientIP, clientPort := getClientIPAndPort(r)
+
+	event := struct {
+		EventType string    `json:"event_type"`
+		UserID    int       `json:"user_id"`
+		Username  string    `json:"username"`
+		SessionID string    `json:"session_id"`
+		ClientIP  string    `json:"client_ip"`
+		ClientPort int      `json:"client_port"`
+		LoginTime time.Time `json:"login_time"`
+	}{
+		EventType:  eventType,
+		UserID:     userID,
+		Username:   username,
+		SessionID:  sessionID,
+		ClientIP:   clientIP,
+		ClientPort: clientPort,
+		LoginTime:  time.Now(),
+	}
+
+	jsonData, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("Failed to marshal session event: %v", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", complianceServiceURL+"/api/compliance/sessions", bytes.NewReader(jsonData))
+	if err != nil {
+		log.Printf("Failed to create compliance request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to send session event to compliance service: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		log.Printf("Compliance service returned status: %d", resp.StatusCode)
+	} else {
+		log.Printf("Session event sent to compliance: type=%s, username=%s", eventType, username)
+	}
 }
