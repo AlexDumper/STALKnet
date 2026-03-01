@@ -23,6 +23,7 @@ go.sum
 # Environment
 .env.local
 .env.*.local
+.env.production
 
 # Logs
 *.log
@@ -34,3 +35,9 @@ Thumbs.db
 # Test/Temp files
 *.tmp
 *.bak
+
+# Production
+ssl/
+certs/
+nginx/*.key
+nginx/*.crt

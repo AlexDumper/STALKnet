@@ -1,4 +1,4 @@
-package repository
+package handlers
 
 import (
 	"context"
@@ -7,33 +7,20 @@ import (
 	"time"
 )
 
-// ChatMessage представляет сообщение чата для сохранения в БД
-type ChatMessage struct {
-	ID         int       `json:"id"`
-	RoomID     int       `json:"room_id"`
-	UserID     int       `json:"user_id"`
-	Username   string    `json:"username"`
-	Content    string    `json:"content"`
-	ClientIP   string    `json:"client_ip"`
-	ClientPort int       `json:"client_port"`
-	Timestamp  time.Time `json:"timestamp"`
-	MessageType string   `json:"message_type"`
-}
-
-// ChatRepository репозиторий для работы с сообщениями чата
-type ChatRepository struct {
+// ComplianceRepository репозиторий для работы с сообщениями чата
+type ComplianceRepository struct {
 	db *sql.DB
 }
 
-// NewChatRepository создаёт новый репозиторий
-func NewChatRepository(db *sql.DB) *ChatRepository {
-	return &ChatRepository{
+// NewComplianceRepository создаёт новый репозиторий
+func NewComplianceRepository(db *sql.DB) *ComplianceRepository {
+	return &ComplianceRepository{
 		db: db,
 	}
 }
 
 // SaveMessage сохраняет сообщение в базу данных
-func (r *ChatRepository) SaveMessage(ctx context.Context, msg *ChatMessage) error {
+func (r *ComplianceRepository) SaveMessage(ctx context.Context, msg *ChatMessage) error {
 	query := `
 		INSERT INTO chat_messages (room_id, user_id, username, content, client_ip, client_port, message_type, timestamp)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -56,12 +43,11 @@ func (r *ChatRepository) SaveMessage(ctx context.Context, msg *ChatMessage) erro
 		return err
 	}
 
-	log.Printf("Message saved: room=%d, user=%s, ip=%s:%d", msg.RoomID, msg.Username, msg.ClientIP, msg.ClientPort)
 	return nil
 }
 
 // GetMessagesByRoom получает сообщения для указанной комнаты
-func (r *ChatRepository) GetMessagesByRoom(ctx context.Context, roomID int, limit, offset int) ([]ChatMessage, error) {
+func (r *ComplianceRepository) GetMessagesByRoom(ctx context.Context, roomID int, limit, offset int) ([]ChatMessage, error) {
 	query := `
 		SELECT id, room_id, user_id, username, content, client_ip, client_port, timestamp, message_type
 		FROM chat_messages
@@ -105,7 +91,7 @@ func (r *ChatRepository) GetMessagesByRoom(ctx context.Context, roomID int, limi
 }
 
 // GetMessagesByUser получает сообщения от указанного пользователя
-func (r *ChatRepository) GetMessagesByUser(ctx context.Context, userID int, limit int) ([]ChatMessage, error) {
+func (r *ComplianceRepository) GetMessagesByUser(ctx context.Context, userID int, limit int) ([]ChatMessage, error) {
 	query := `
 		SELECT id, room_id, user_id, username, content, client_ip, client_port, timestamp, message_type
 		FROM chat_messages
@@ -144,7 +130,7 @@ func (r *ChatRepository) GetMessagesByUser(ctx context.Context, userID int, limi
 }
 
 // DeleteOldMessages удаляет сообщения старше указанного периода
-func (r *ChatRepository) DeleteOldMessages(ctx context.Context, olderThan time.Duration) (int64, error) {
+func (r *ComplianceRepository) DeleteOldMessages(ctx context.Context, olderThan time.Duration) (int64, error) {
 	query := `
 		DELETE FROM chat_messages
 		WHERE timestamp < NOW() - $1::interval
@@ -160,20 +146,13 @@ func (r *ChatRepository) DeleteOldMessages(ctx context.Context, olderThan time.D
 		return 0, err
 	}
 
-	log.Printf("Deleted %d old chat messages", rowsAffected)
+	log.Printf("Deleted %d old chat messages (older than %v)", rowsAffected, olderThan)
 	return rowsAffected, nil
 }
 
 // GetTotalMessages возвращает общее количество сообщений
-func (r *ChatRepository) GetTotalMessages(ctx context.Context) (int64, error) {
+func (r *ComplianceRepository) GetTotalMessages(ctx context.Context) (int64, error) {
 	var count int64
 	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chat_messages`).Scan(&count)
-	return count, err
-}
-
-// GetMessagesCountByRoom возвращает количество сообщений в комнате
-func (r *ChatRepository) GetMessagesCountByRoom(ctx context.Context, roomID int) (int64, error) {
-	var count int64
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chat_messages WHERE room_id = $1`, roomID).Scan(&count)
 	return count, err
 }

@@ -1,0 +1,236 @@
+# Docker Compose с Traefik для автоматического HTTPS
+# Использование: docker-compose -f docker-compose.traefik.yml up -d
+
+version: '3.8'
+
+services:
+  # Traefik reverse proxy
+  traefik:
+    image: traefik:v2.10
+    container_name: stalknet-traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=your@email.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: stalknet-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-stalknet}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-stalknet}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - stalknet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-stalknet}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: stalknet-redis
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - redis_data:/data
+      - ./deploy/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - stalknet-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: stalknet-gateway
+    environment:
+      - AUTH_SERVICE_URL=http://auth:8081
+      - USER_SERVICE_URL=http://user:8082
+      - CHAT_SERVICE_URL=http://chat:8083
+      - TASK_SERVICE_URL=http://task:8084
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT=8080
+    depends_on:
+      auth:
+        condition: service_healthy
+      user:
+        condition: service_healthy
+      chat:
+        condition: service_healthy
+      task:
+        condition: service_healthy
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.stalknet.rule=Host(`yourdomain.com`) || Host(`www.yourdomain.com`)"
+      - "traefik.http.routers.stalknet.entrypoints=websecure"
+      - "traefik.http.routers.stalknet.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.stalknet.service=stalknet"
+      - "traefik.http.services.stalknet.loadbalancer.server.port=8080"
+      - "traefik.http.routers.stalknet.middlewares=websocket@file"
+
+  auth:
+    build:
+      context: ./services/auth
+      dockerfile: Dockerfile
+    container_name: stalknet-auth
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-stalknet}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-stalknet}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT=8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  user:
+    build:
+      context: ./services/user
+      dockerfile: Dockerfile
+    container_name: stalknet-user
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-stalknet}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-stalknet}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PORT=8082
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  chat:
+    build:
+      context: ./services/chat
+      dockerfile: Dockerfile
+    container_name: stalknet-chat
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-stalknet}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-stalknet}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PORT=8083
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  task:
+    build:
+      context: ./services/task
+      dockerfile: Dockerfile
+    container_name: stalknet-task
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-stalknet}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-stalknet}
+      - PORT=8084
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  notification:
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile
+    container_name: stalknet-notification
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PORT=8085
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+  traefik_letsencrypt:
+
+networks:
+  stalknet-network:
+    driver: bridge

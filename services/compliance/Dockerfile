@@ -8,9 +8,7 @@ COPY go.mod go.sum* ./
 RUN go mod download || true
 
 COPY . .
-
-# Сборка с оптимизациями для продакшена
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o chat .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o compliance .
 
 # Production образ с минимальными правами
 FROM alpine:3.18
@@ -21,15 +19,15 @@ RUN addgroup -g 1000 appgroup && \
 
 WORKDIR /app
 
-COPY --from=builder /app/chat .
+COPY --from=builder /app/compliance .
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Переключаемся на непривилегированного пользователя
 USER appuser
 
-EXPOSE 8083
+EXPOSE 8086
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget -q --spider http://localhost:8083/health || exit 1
+    CMD wget -q --spider http://localhost:8086/health || exit 1
 
-CMD ["./chat"]
+CMD ["./compliance"]

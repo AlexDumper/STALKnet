@@ -19,13 +19,17 @@ func SetupRouter(
 	router := gin.New()
 	router.Use(gin.Recovery())
 
-	// Статические файлы веб-клиента
+	// Статические файлы веб-клиента с запретом кэширования
 	router.GET("/", func(c *gin.Context) {
 		data, err := webFS.ReadFile("web/index.html")
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
+		// Запрещаем кэширование
+		c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
 		c.Data(200, "text/html; charset=utf-8", data)
 	})
 
@@ -35,6 +39,10 @@ func SetupRouter(
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
+		// Запрещаем кэширование
+		c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
 		c.Data(200, "application/javascript", data)
 	})
 

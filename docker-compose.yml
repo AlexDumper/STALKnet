@@ -48,12 +48,14 @@ services:
       - USER_SERVICE_URL=http://user:8082
       - CHAT_SERVICE_URL=http://chat:8083
       - TASK_SERVICE_URL=http://task:8084
+      - COMPLIANCE_SERVICE_URL=http://compliance:8086
       - JWT_SECRET=${JWT_SECRET:-your-secret-key}
     depends_on:
       - auth
       - user
       - chat
       - task
+      - compliance
     networks:
       - stalknet-network
 
@@ -111,9 +113,11 @@ services:
       - DB_NAME=${DB_NAME:-stalknet}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - COMPLIANCE_SERVICE_URL=http://compliance:8086
     depends_on:
       - postgres
       - redis
+      - compliance
     networks:
       - stalknet-network
 
@@ -145,6 +149,30 @@ services:
       - redis
     networks:
       - stalknet-network
+
+  compliance:
+    build:
+      context: ./services/compliance
+      dockerfile: Dockerfile
+    container_name: stalknet-compliance
+    ports:
+      - "8086:8086"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-stalknet}
+      - DB_PASSWORD=${DB_PASSWORD:-stalknet_secret}
+      - DB_NAME=${DB_NAME:-stalknet}
+      - PORT=8086
+    depends_on:
+      - postgres
+    networks:
+      - stalknet-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   postgres_data:

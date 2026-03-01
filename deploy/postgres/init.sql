@@ -47,6 +47,26 @@ CREATE INDEX idx_messages_room_id ON messages(room_id);
 CREATE INDEX idx_messages_user_id ON messages(user_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at);
 
+-- История сообщений чата (для соблюдения ФЗ-374)
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id SERIAL PRIMARY KEY,
+    room_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    username VARCHAR(100) NOT NULL,
+    content TEXT NOT NULL,
+    client_ip VARCHAR(45) NOT NULL,
+    client_port INTEGER NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    message_type VARCHAR(20) DEFAULT 'message',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_chat_messages_room_id ON chat_messages(room_id);
+CREATE INDEX idx_chat_messages_user_id ON chat_messages(user_id);
+CREATE INDEX idx_chat_messages_timestamp ON chat_messages(timestamp);
+CREATE INDEX idx_chat_messages_username ON chat_messages(username);
+CREATE INDEX idx_chat_messages_room_timestamp ON chat_messages(room_id, timestamp DESC);
+
 -- Задачи
 CREATE TABLE IF NOT EXISTS tasks (
     id SERIAL PRIMARY KEY,
@@ -88,6 +108,17 @@ CREATE INDEX idx_static_content_auth ON static_content(min_auth_state, max_auth_
 CREATE INDEX idx_static_content_language ON static_content(language);
 
 -- Начальные данные для справки
+-- Приветственное сообщение (загружается при подключении)
+INSERT INTO static_content (content_key, title, content, min_auth_state, max_auth_state) VALUES
+('help_welcome', 'Приветствие',
+'───
+Добро пожаловать в STALKnet!
+• /help - Список команд
+• /auth - Авторизация
+— Автор полностью согласен с требованиями регулятора о предоставлении информации о действиях пользователей. Все сообщения логируются, могут быть просмотрены и прочитаны. Срок хранения - 1 год. Требование составлено на основе ФЗ-374 от 06.07.2016
+───', 0, 4);
+
+-- Справка для гостей (неавторизованные пользователи)
 INSERT INTO static_content (content_key, title, content, min_auth_state, max_auth_state) VALUES
 ('help_guest', 'Базовые команды',
 '───
@@ -98,8 +129,10 @@ INSERT INTO static_content (content_key, title, content, min_auth_state, max_aut
 • /auth - Авторизация
 • /logout - Выйти из аккаунта
 • /login <user> <pass> - Быстрый вход
-───', 0, 0),
+───', 0, 0);
 
+-- Справка для авторизованных пользователей
+INSERT INTO static_content (content_key, title, content, min_auth_state, max_auth_state) VALUES
 ('help_authorized', 'Полный список команд',
 '───
 • /help - Эта справка
@@ -113,11 +146,4 @@ INSERT INTO static_content (content_key, title, content, min_auth_state, max_aut
 • /mock <text> - Отправить сообщение
 • /mockmsg - Случайное сообщение
 • /mocktask - Показать задание
-───', 4, 4),
-
-('help_welcome', 'Добро пожаловать',
-'───
-Добро пожаловать в STALKnet!
-• /help - Список команд
-• /auth - Авторизация
-───', 0, 0);
+───', 4, 4);

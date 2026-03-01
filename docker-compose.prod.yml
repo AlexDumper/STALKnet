@@ -1,0 +1,282 @@
+# Production Docker Compose конфигурация для STALKnet
+# Использование: docker-compose -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: stalknet-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-stalknet}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-stalknet_secret}
+      POSTGRES_DB: ${DB_NAME:-stalknet}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - stalknet-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-stalknet} -d ${DB_NAME:-stalknet}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  redis:
+    image: redis:7-alpine
+    container_name: stalknet-redis
+    command: redis-server /usr/local/etc/redis/redis.conf
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./deploy/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - stalknet-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: stalknet-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - AUTH_SERVICE_URL=http://auth:8081
+      - USER_SERVICE_URL=http://user:8082
+      - CHAT_SERVICE_URL=http://chat:8083
+      - TASK_SERVICE_URL=http://task:8084
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT=8080
+    depends_on:
+      auth:
+        condition: service_healthy
+      user:
+        condition: service_healthy
+      chat:
+        condition: service_healthy
+      task:
+        condition: service_healthy
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  auth:
+    build:
+      context: ./services/auth
+      dockerfile: Dockerfile
+    container_name: stalknet-auth
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-stalknet}
+      - DB_PASSWORD=${DB_PASSWORD:-stalknet_secret}
+      - DB_NAME=${DB_NAME:-stalknet}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT=8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  user:
+    build:
+      context: ./services/user
+      dockerfile: Dockerfile
+    container_name: stalknet-user
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-stalknet}
+      - DB_PASSWORD=${DB_PASSWORD:-stalknet_secret}
+      - DB_NAME=${DB_NAME:-stalknet}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PORT=8082
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  chat:
+    build:
+      context: ./services/chat
+      dockerfile: Dockerfile
+    container_name: stalknet-chat
+    ports:
+      - "8083:8083"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-stalknet}
+      - DB_PASSWORD=${DB_PASSWORD:-stalknet_secret}
+      - DB_NAME=${DB_NAME:-stalknet}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PORT=8083
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  task:
+    build:
+      context: ./services/task
+      dockerfile: Dockerfile
+    container_name: stalknet-task
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-stalknet}
+      - DB_PASSWORD=${DB_PASSWORD:-stalknet_secret}
+      - DB_NAME=${DB_NAME:-stalknet}
+      - PORT=8084
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  notification:
+    build:
+      context: ./services/notification
+      dockerfile: Dockerfile
+    container_name: stalknet-notification
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PORT=8085
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - stalknet-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  stalknet-network:
+    driver: bridge

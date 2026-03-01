@@ -11,7 +11,7 @@ const versionDisplay = document.getElementById("versionDisplay");
 const API_BASE = window.location.origin;
 
 // Версия приложения
-const APP_VERSION = "0.1.7";
+const APP_VERSION = "0.1.8";
 
 // Отображение версии
 if (versionDisplay) {
@@ -285,14 +285,30 @@ async function loadContent(key, callback) {
             if (data.content) {
                 // Разбиваем контент на строки и отображаем
                 const lines = data.content.split("\n");
-                lines.forEach(line => addMessage(line, "system"));
+                
+                // Добавляем разделители для приветственного сообщения
+                if (key === "help_welcome") {
+                    addMessage("---", "system");
+                }
+                
+                lines.forEach(line => {
+                    if (line.trim()) {
+                        addMessage(line, "system");
+                    }
+                });
+                
+                // Добавляем закрывающие разделители для приветственного сообщения
+                if (key === "help_welcome") {
+                    addMessage("---", "system");
+                }
+                
                 return;
             }
         }
     } catch (e) {
         console.log("Failed to load content:", e.message);
     }
-    // Если не удалось загрузить, вызываем callback с дефолтным контентом
+    // Если не удалось загрузить, вызываем callback
     if (callback) callback();
 }
 
@@ -332,12 +348,8 @@ setTimeout(() => {
     updateStatus();
     // Загружаем приветственное сообщение из базы
     loadContent("help_welcome", function() {
-        // Дефолтное приветствие
-        addMessage("---", "system");
-        addMessage("Добро пожаловать в STALKnet!", "system");
-        addMessage("Введите /help для списка команд", "system");
-        addMessage("Введите /auth для авторизации", "system");
-        addMessage("---", "system");
+        // Fallback только если БД недоступна (крайний случай)
+        console.warn("Контент help_welcome не загружен из БД");
     });
 }, 1000);
 
