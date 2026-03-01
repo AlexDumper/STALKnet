@@ -18,6 +18,13 @@ if (versionDisplay) {
     versionDisplay.textContent = "v" + APP_VERSION;
 }
 
+// Вывод версии в консоль
+console.log("╭────────────────────────────────────────────╮");
+console.log("│ STALKnet Web Client");
+console.log("│ Версия: v" + APP_VERSION);
+console.log("│ Загрузка: " + new Date().toLocaleString('ru-RU'));
+console.log("╰────────────────────────────────────────────╯");
+
 // WebSocket URL - используем тот же хост
 const WS_HOST = window.location.hostname;
 const WS_PORT = "8083";
