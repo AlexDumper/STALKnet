@@ -65,15 +65,15 @@
 
 ## Сервисы
 
-| Сервис       | Порт | Описание                              |
-|--------------|------|---------------------------------------|
-| Gateway      | 8080 | API Gateway, роутинг, статика         |
-| Auth         | 8081 | Регистрация, логин, JWT, сессии       |
-| User         | 8082 | Профили пользователей, статусы        |
-| Chat         | 8083 | **WebSocket**, комнаты, сообщения     |
-| Task         | 8084 | Управление задачами                   |
-| Notification | 8085 | Уведомления                           |
-| **Compliance** | **8086** | **Сохранение сообщений для ФЗ-374**   |
+| Сервис       | Порт | Описание                              | Документация |
+|--------------|------|---------------------------------------|--------------|
+| Gateway      | 8080 | API Gateway, роутинг, статика         | [GATEWAY_SERVICE.md](GATEWAY_SERVICE.md) |
+| Auth         | 8081 | Регистрация, логин, JWT, сессии       | [AUTH_SERVICE.md](AUTH_SERVICE.md) |
+| User         | 8082 | Профили пользователей, статусы        | [USER_SERVICE.md](USER_SERVICE.md) |
+| Chat         | 8083 | **WebSocket**, комнаты, сообщения     | [CHAT_SERVICE.md](CHAT_SERVICE.md) |
+| Task         | 8084 | Управление задачами                   | [TASK_SERVICE.md](TASK_SERVICE.md) |
+| Notification | 8085 | Уведомления                           | [NOTIFICATION_SERVICE.md](NOTIFICATION_SERVICE.md) |
+| **Compliance** | **8086** | **Сохранение сообщений для ФЗ-374**   | [COMPLIANCE_SERVICE.md](COMPLIANCE_SERVICE.md) |
 
 ## Клиенты
 
@@ -655,3 +655,32 @@ ws.send(JSON.stringify({
 | Системные сообщения    | Зелёный           | `#0f0`           |
 | Задачи                 | Жёлтый            | `#ff0`           |
 | Ошибки                 | Красный           | `#f00`           |
+
+---
+
+## 📚 Документация по микросервисам
+
+Подробная документация по каждому микросервису доступна в отдельных файлах:
+
+| Файл | Сервис | Статус |
+|------|--------|--------|
+| [GATEWAY_SERVICE.md](GATEWAY_SERVICE.md) | Gateway Service (8080) | ✅ Работает |
+| [AUTH_SERVICE.md](AUTH_SERVICE.md) | Auth Service (8081) | ✅ Работает |
+| [USER_SERVICE.md](USER_SERVICE.md) | User Service (8082) | 🟡 В разработке |
+| [CHAT_SERVICE.md](CHAT_SERVICE.md) | Chat Service (8083) | ✅ Работает |
+| [TASK_SERVICE.md](TASK_SERVICE.md) | Task Service (8084) | 🟡 В разработке |
+| [NOTIFICATION_SERVICE.md](NOTIFICATION_SERVICE.md) | Notification Service (8085) | 🟡 В разработке |
+| [COMPLIANCE_SERVICE.md](COMPLIANCE_SERVICE.md) | Compliance Service (8086) | ✅ Работает |
+
+### Дополнительная документация
+
+| Файл | Описание |
+|------|----------|
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Продакшн-развертывание |
+| [PRODUCTION_READY.md](PRODUCTION_READY.md) | Отчёт о продакшн-подготовке |
+| [USERS_TABLE.md](USERS_TABLE.md) | Таблица пользователей |
+| [ROOMS_TABLE.md](ROOMS_TABLE.md) | Таблица комнат |
+| [TASKS_TABLE.md](TASKS_TABLE.md) | Таблица задач |
+| [USER_SESSIONS.md](USER_SESSIONS.md) | Сессии пользователей (ФЗ-374) |
+| [USER_EVENTS.md](USER_EVENTS.md) | События пользователей (ФЗ-374) |
+| [CHAT_MESSAGES_STORAGE.md](CHAT_MESSAGES_STORAGE.md) | Сохранение сообщений чата |
