@@ -104,6 +104,13 @@ func (r *AuthRepository) UpdateUserStatus(ctx context.Context, userID int, statu
 	return err
 }
 
+// UpdateUsername обновляет имя пользователя
+func (r *AuthRepository) UpdateUsername(ctx context.Context, userID int, newUsername string) error {
+	query := `UPDATE users SET username = $1 WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, newUsername, userID)
+	return err
+}
+
 // CreateSession создаёт сессию в Redis
 func (r *AuthRepository) CreateSession(ctx context.Context, session *Session) error {
 	sessionData, err := json.Marshal(session)

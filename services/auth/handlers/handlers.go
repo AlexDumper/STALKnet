@@ -58,6 +58,7 @@ func SetupRouter(
 		auth.POST("/validate", authHandler.Validate)
 		auth.POST("/check-username", authHandler.CheckUsername)
 		auth.GET("/session", authHandler.GetSessionInfo)
+		auth.PUT("/update-username", authHandler.UpdateUsername)
 	}
 
 	// Контент (справка и т.д.)

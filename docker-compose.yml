@@ -73,9 +73,11 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - JWT_SECRET=${JWT_SECRET:-your-secret-key}
+      - COMPLIANCE_SERVICE_URL=http://compliance:8086
     depends_on:
       - postgres
       - redis
+      - compliance
     networks:
       - stalknet-network
 

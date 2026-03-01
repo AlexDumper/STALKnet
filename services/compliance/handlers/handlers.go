@@ -12,6 +12,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// UserEvent представляет событие пользователя
+type UserEvent struct {
+	ID            int       `json:"id"`
+	EventType     string    `json:"event_type"` // CREATE, UPDATE
+	UserID        int       `json:"user_id"`
+	Username      string    `json:"username"`
+	ClientIP      string    `json:"client_ip"`
+	ClientPort    int       `json:"client_port"`
+	OldUsername   string    `json:"old_username,omitempty"`
+	NewUsername   string    `json:"new_username,omitempty"`
+	Metadata      string    `json:"metadata,omitempty"`
+	Timestamp     time.Time `json:"timestamp"`
+}
+
 // ChatMessage представляет сообщение чата для сохранения в БД
 type ChatMessage struct {
 	ID          int       `json:"id"`
@@ -54,9 +68,17 @@ func SetupRouter(dbHost, dbPort, dbUser, dbPassword, dbName string) *gin.Engine 
 	// API маршруты
 	api := router.Group("/api/compliance")
 	{
+		// Сообщения чата
 		api.POST("/messages", complianceHandler.SaveMessage)
 		api.GET("/rooms/:id/messages", complianceHandler.GetMessages)
 		api.GET("/users/:id/messages", complianceHandler.GetUserMessages)
+		
+		// События пользователей
+		api.POST("/user-events", complianceHandler.SaveUserEvent)
+		api.GET("/user-events", complianceHandler.GetUserEvents)
+		api.GET("/user-events/:username", complianceHandler.GetUserEventsByUsername)
+		
+		// Общее
 		api.DELETE("/cleanup", complianceHandler.CleanupOldMessages)
 		api.GET("/stats", complianceHandler.GetStats)
 	}
@@ -231,5 +253,93 @@ func (h *ComplianceHandler) GetStats(c *gin.Context) {
 		"total_messages": total,
 		"retention_days": 365,
 		"compliance":     "ФЗ-374 от 06.07.2016",
+	})
+}
+
+// SaveUserEvent сохраняет событие пользователя
+func (h *ComplianceHandler) SaveUserEvent(c *gin.Context) {
+	var event UserEvent
+	if err := c.ShouldBindJSON(&event); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Валидация
+	if event.EventType == "" || event.Username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Event type and username required"})
+		return
+	}
+
+	if event.EventType != "CREATE" && event.EventType != "UPDATE" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event type"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := h.repo.SaveUserEvent(ctx, &event); err != nil {
+		log.Printf("Failed to save user event: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save user event"})
+		return
+	}
+
+	log.Printf("User event saved: type=%s, username=%s, ip=%s", event.EventType, event.Username, event.ClientIP)
+	c.JSON(http.StatusCreated, gin.H{
+		"message":  "User event saved successfully",
+		"event_id": event.ID,
+	})
+}
+
+// GetUserEvents получает все события пользователей
+func (h *ComplianceHandler) GetUserEvents(c *gin.Context) {
+	eventType := c.Query("event_type")
+	limit := 50
+	offset := 0
+	
+	if l := c.Query("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
+	if o := c.Query("offset"); o != "" {
+		fmt.Sscanf(o, "%d", &offset)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	events, err := h.repo.GetUserEvents(ctx, eventType, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user events"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"events": events,
+		"total":  len(events),
+	})
+}
+
+// GetUserEventsByUsername получает события по имени пользователя
+func (h *ComplianceHandler) GetUserEventsByUsername(c *gin.Context) {
+	username := c.Param("username")
+	limit := 50
+	
+	if l := c.Query("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	events, err := h.repo.GetUserEventsByUsername(ctx, username, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user events by username"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"events":  events,
+		"username": username,
+		"total":   len(events),
 	})
 }

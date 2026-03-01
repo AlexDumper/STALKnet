@@ -156,3 +156,125 @@ func (r *ComplianceRepository) GetTotalMessages(ctx context.Context) (int64, err
 	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chat_messages`).Scan(&count)
 	return count, err
 }
+
+// SaveUserEvent сохраняет событие пользователя
+func (r *ComplianceRepository) SaveUserEvent(ctx context.Context, event *UserEvent) error {
+	query := `
+		INSERT INTO user_events (event_type, user_id, username, client_ip, client_port, old_username, new_username, metadata, timestamp)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id
+	`
+
+	err := r.db.QueryRowContext(ctx, query,
+		event.EventType,
+		event.UserID,
+		event.Username,
+		event.ClientIP,
+		event.ClientPort,
+		event.OldUsername,
+		event.NewUsername,
+		event.Metadata,
+		event.Timestamp,
+	).Scan(&event.ID)
+
+	if err != nil {
+		log.Printf("Failed to save user event: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+// GetUserEvents получает все события пользователей
+func (r *ComplianceRepository) GetUserEvents(ctx context.Context, eventType string, limit, offset int) ([]UserEvent, error) {
+	var query string
+	var rows *sql.Rows
+	var err error
+
+	if eventType != "" {
+		query = `
+			SELECT id, event_type, user_id, username, client_ip, client_port, old_username, new_username, metadata, timestamp
+			FROM user_events
+			WHERE event_type = $1
+			ORDER BY timestamp DESC
+			LIMIT $2 OFFSET $3
+		`
+		rows, err = r.db.QueryContext(ctx, query, eventType, limit, offset)
+	} else {
+		query = `
+			SELECT id, event_type, user_id, username, client_ip, client_port, old_username, new_username, metadata, timestamp
+			FROM user_events
+			ORDER BY timestamp DESC
+			LIMIT $1 OFFSET $2
+		`
+		rows, err = r.db.QueryContext(ctx, query, limit, offset)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []UserEvent
+	for rows.Next() {
+		var event UserEvent
+		err := rows.Scan(
+			&event.ID,
+			&event.EventType,
+			&event.UserID,
+			&event.Username,
+			&event.ClientIP,
+			&event.ClientPort,
+			&event.OldUsername,
+			&event.NewUsername,
+			&event.Metadata,
+			&event.Timestamp,
+		)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+
+	return events, nil
+}
+
+// GetUserEventsByUsername получает события по имени пользователя
+func (r *ComplianceRepository) GetUserEventsByUsername(ctx context.Context, username string, limit int) ([]UserEvent, error) {
+	query := `
+		SELECT id, event_type, user_id, username, client_ip, client_port, old_username, new_username, metadata, timestamp
+		FROM user_events
+		WHERE username = $1
+		ORDER BY timestamp DESC
+		LIMIT $2
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, username, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []UserEvent
+	for rows.Next() {
+		var event UserEvent
+		err := rows.Scan(
+			&event.ID,
+			&event.EventType,
+			&event.UserID,
+			&event.Username,
+			&event.ClientIP,
+			&event.ClientPort,
+			&event.OldUsername,
+			&event.NewUsername,
+			&event.Metadata,
+			&event.Timestamp,
+		)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+
+	return events, nil
+}

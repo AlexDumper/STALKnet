@@ -1,11 +1,16 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
+	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +19,14 @@ import (
 
 	"github.com/stalknet/services/auth/repository"
 )
+
+var complianceServiceURL = os.Getenv("COMPLIANCE_SERVICE_URL")
+
+func init() {
+	if complianceServiceURL == "" {
+		complianceServiceURL = "http://localhost:8086"
+	}
+}
 
 type AuthHandler struct {
 	repo      *repository.AuthRepository
@@ -97,6 +110,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 		return
 	}
+
+	// Отправляем событие регистрации в Compliance Service
+	go sendUserEventToCompliance("CREATE", userID, req.Username, "", c.Request)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message":  "User registered successfully",
@@ -448,4 +464,146 @@ func (h *AuthHandler) GetContent(c *gin.Context) {
 		"title": title,
 		"content": content,
 	})
+}
+
+// UpdateUsername обновляет имя пользователя и отправляет событие в Compliance
+func (h *AuthHandler) UpdateUsername(c *gin.Context) {
+	ctx := context.Background()
+
+	var req struct {
+		UserID      int    `json:"user_id" binding:"required"`
+		NewUsername string `json:"new_username" binding:"required,min=2,max=50"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Получаем текущее имя пользователя
+	user, err := h.repo.GetUserByID(ctx, req.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	oldUsername := user.Username
+
+	// Проверяем, не занято ли новое имя
+	existingUser, err := h.repo.GetUserByUsername(ctx, req.NewUsername)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	if existingUser != nil && existingUser.ID != req.UserID {
+		c.JSON(http.StatusConflict, gin.H{"error": "Username already taken"})
+		return
+	}
+
+	// Обновляем имя
+	err = h.repo.UpdateUsername(ctx, req.UserID, req.NewUsername)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update username"})
+		return
+	}
+
+	// Отправляем событие обновления в Compliance Service
+	go sendUserEventToCompliance("UPDATE", req.UserID, req.NewUsername, oldUsername, c.Request)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "Username updated successfully",
+		"user_id":      req.UserID,
+		"old_username": oldUsername,
+		"new_username": req.NewUsername,
+	})
+}
+
+// sendUserEventToCompliance отправляет событие пользователя в Compliance Service
+func sendUserEventToCompliance(eventType string, userID int, username, oldUsername string, r *http.Request) {
+	// Получаем IP и порт
+	clientIP, clientPort := getClientIPAndPort(r)
+
+	event := struct {
+		EventType   string    `json:"event_type"`
+		UserID      int       `json:"user_id"`
+		Username    string    `json:"username"`
+		ClientIP    string    `json:"client_ip"`
+		ClientPort  int       `json:"client_port"`
+		OldUsername string    `json:"old_username,omitempty"`
+		NewUsername string    `json:"new_username,omitempty"`
+		Timestamp   time.Time `json:"timestamp"`
+	}{
+		EventType:   eventType,
+		UserID:      userID,
+		Username:    username,
+		ClientIP:    clientIP,
+		ClientPort:  clientPort,
+		OldUsername: oldUsername,
+		NewUsername: username,
+		Timestamp:   time.Now(),
+	}
+
+	jsonData, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("Failed to marshal user event: %v", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", complianceServiceURL+"/api/compliance/user-events", bytes.NewReader(jsonData))
+	if err != nil {
+		log.Printf("Failed to create compliance request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to send user event to compliance service: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		log.Printf("Compliance service returned status: %d", resp.StatusCode)
+	} else {
+		log.Printf("User event sent to compliance: type=%s, username=%s", eventType, username)
+	}
+}
+
+// getClientIPAndPort извлекает IP адрес и порт клиента из запроса
+func getClientIPAndPort(r *http.Request) (string, int) {
+	// Проверяем заголовок X-Forwarded-For
+	xff := r.Header.Get("X-Forwarded-For")
+	if xff != "" {
+		ips := strings.Split(xff, ",")
+		if len(ips) > 0 {
+			return strings.TrimSpace(ips[0]), 0
+		}
+	}
+
+	// Проверяем заголовок X-Real-IP
+	xri := r.Header.Get("X-Real-IP")
+	if xri != "" {
+		return xri, 0
+	}
+
+	// Получаем из RemoteAddr
+	host, portStr, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr, 0
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return host, 0
+	}
+
+	return host, port
 }
