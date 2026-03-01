@@ -156,6 +156,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Обновляем статус пользователя
+	_ = h.repo.UpdateUserStatus(ctx, user.ID, "online")
+
+	// Генерируем уникальный session ID на основе username и password hash
+	sessionID := generateSessionID(user.Username, user.PasswordHash)
+
 	// Создаём сессию
 	session := &repository.Session{
 		UserID:       user.ID,
@@ -172,12 +178,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
 		return
 	}
-
-	// Обновляем статус пользователя
-	_ = h.repo.UpdateUserStatus(ctx, user.ID, "online")
-
-	// Генерируем уникальный session ID на основе username и password hash
-	sessionID := generateSessionID(user.Username, user.PasswordHash)
 
 	// Отправляем событие LOGIN в Compliance Service
 	go sendSessionEventToCompliance("LOGIN", user.ID, user.Username, sessionID, c.Request)
