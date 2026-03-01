@@ -529,13 +529,19 @@ async function handleCommand(cmd) {
                 if (resp.ok) {
                     const oldNick = username;
                     username = newUsername;
-                    
+
                     // Сохраняем сессию с новым именем
                     saveSession();
-                    
+
                     // Обновляем отображение
                     updateDisplayName(username);
-                    
+
+                    // Переподключаем WebSocket с новым именем
+                    if (wsConnected && ws) {
+                        ws.close();
+                    }
+                    connectWebSocket(userId, username);
+
                     addMessage("---", "system");
                     addMessage("Имя изменено с '" + oldNick + "' на '" + username + "'", "system");
                     addMessage("---", "system");

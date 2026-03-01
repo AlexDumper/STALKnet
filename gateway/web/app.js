@@ -536,6 +536,12 @@ async function handleCommand(cmd) {
                     // Обновляем отображение
                     updateDisplayName(username);
 
+                    // Переподключаем WebSocket с новым именем
+                    if (wsConnected && ws) {
+                        ws.close();
+                    }
+                    connectWebSocket(userId, username);
+
                     addMessage("---", "system");
                     addMessage("Имя изменено с '" + oldNick + "' на '" + username + "'", "system");
                     addMessage("---", "system");
