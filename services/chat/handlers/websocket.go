@@ -45,6 +45,7 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 	roomIDStr := c.Query("room_id")
 	userIDStr := c.Query("user_id")
 	username := c.Query("username")
+	sessionID := c.Query("session_id") // Получаем session_id
 
 	roomID, err := strconv.Atoi(roomIDStr)
 	if err != nil {
@@ -70,12 +71,13 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 	clientIP, clientPort := getClientIPAndPort(c.Request)
 
 	client := &hub.Client{
-		Hub:      h.hub,
-		Conn:     conn,
-		UserID:   userID,
-		Username: username,
-		RoomID:   roomID,
-		Send:     make(chan []byte, 256),
+		Hub:       h.hub,
+		Conn:      conn,
+		UserID:    userID,
+		Username:  username,
+		SessionID: sessionID, // Сохраняем session_id
+		RoomID:    roomID,
+		Send:      make(chan []byte, 256),
 	}
 
 	// Регистрируем клиента
@@ -88,7 +90,7 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 	go h.writePump(client)
 
 	// Запускаем горутину для чтения
-	go h.readPump(client, clientIP, clientPort)
+	go h.readPump(client, sessionID, clientIP, clientPort)
 }
 
 // getClientIPAndPort извлекает IP адрес и порт клиента из запроса
@@ -124,11 +126,11 @@ func getClientIPAndPort(r *http.Request) (string, int) {
 	return host, port
 }
 
-func (h *ChatHandler) readPump(client *hub.Client, clientIP string, clientPort int) {
+func (h *ChatHandler) readPump(client *hub.Client, sessionID, clientIP string, clientPort int) {
 	defer func() {
 		// Отправляем событие DISCONNECT при разрыве соединения
-		go sendDisconnectEventToCompliance(client.UserID, client.Username, clientIP, clientPort)
-		
+		go sendDisconnectEventToCompliance(client.UserID, client.Username, sessionID, clientIP, clientPort)
+
 		client.Hub.Unregister <- client
 		client.Conn.Close()
 	}()
@@ -216,11 +218,12 @@ func sendToComplianceService(roomID, userID int, username, content, clientIP str
 }
 
 // sendDisconnectEventToCompliance отправляет событие DISCONNECT в Compliance Service
-func sendDisconnectEventToCompliance(userID int, username, clientIP string, clientPort int) {
+func sendDisconnectEventToCompliance(userID int, username, sessionID, clientIP string, clientPort int) {
 	event := struct {
 		EventType  string    `json:"event_type"`
 		UserID     int       `json:"user_id"`
 		Username   string    `json:"username"`
+		SessionID  string    `json:"session_id"`
 		ClientIP   string    `json:"client_ip"`
 		ClientPort int       `json:"client_port"`
 		LoginTime  time.Time `json:"login_time"`
@@ -228,6 +231,7 @@ func sendDisconnectEventToCompliance(userID int, username, clientIP string, clie
 		EventType:  "DISCONNECT",
 		UserID:     userID,
 		Username:   username,
+		SessionID:  sessionID,
 		ClientIP:   clientIP,
 		ClientPort: clientPort,
 		LoginTime:  time.Now(),

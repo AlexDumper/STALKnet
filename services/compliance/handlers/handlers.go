@@ -370,7 +370,7 @@ func (h *ComplianceHandler) GetUserEventsByUsername(c *gin.Context) {
 	})
 }
 
-// SaveSession сохраняет сессию пользователя (LOGIN)
+// SaveSession сохраняет сессию пользователя (LOGIN, LOGOUT, DISCONNECT)
 func (h *ComplianceHandler) SaveSession(c *gin.Context) {
 	var session UserSession
 	if err := c.ShouldBindJSON(&session); err != nil {
@@ -378,9 +378,9 @@ func (h *ComplianceHandler) SaveSession(c *gin.Context) {
 		return
 	}
 
-	// Валидация
-	if session.EventType != "LOGIN" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Event type must be LOGIN"})
+	// Валидация типа события
+	if session.EventType != "LOGIN" && session.EventType != "LOGOUT" && session.EventType != "DISCONNECT" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Event type must be LOGIN, LOGOUT, or DISCONNECT"})
 		return
 	}
 	if session.Username == "" || session.ClientIP == "" {
@@ -391,17 +391,30 @@ func (h *ComplianceHandler) SaveSession(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := h.repo.SaveSession(ctx, &session); err != nil {
-		log.Printf("Failed to save user session: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save session"})
-		return
+	// Для LOGIN создаём новую запись, для LOGOUT/DISCONNECT обновляем существующую
+	if session.EventType == "LOGIN" {
+		if err := h.repo.SaveSession(ctx, &session); err != nil {
+			log.Printf("Failed to save user session: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save session"})
+			return
+		}
+		log.Printf("Session saved: type=%s, username=%s, ip=%s, session_id=%s", session.EventType, session.Username, session.ClientIP, session.SessionID)
+		c.JSON(http.StatusCreated, gin.H{
+			"message":    "Session saved successfully",
+			"session_id": session.ID,
+		})
+	} else {
+		// LOGOUT или DISCONNECT - обновляем существующую сессию
+		if err := h.repo.UpdateSessionLogout(ctx, &session); err != nil {
+			log.Printf("Failed to update session logout: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update session"})
+			return
+		}
+		log.Printf("Session updated: type=%s, username=%s, ip=%s, session_id=%s", session.EventType, session.Username, session.ClientIP, session.SessionID)
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Session updated successfully",
+		})
 	}
-
-	log.Printf("Session saved: type=%s, username=%s, ip=%s", session.EventType, session.Username, session.ClientIP)
-	c.JSON(http.StatusCreated, gin.H{
-		"message":   "Session saved successfully",
-		"session_id": session.ID,
-	})
 }
 
 // GetSessions получает все сессии

@@ -224,7 +224,8 @@ function connectWebSocket(userId, username) {
         ws.close();
     }
 
-    const url = `ws://${WS_HOST}:${WS_PORT}/ws/chat?room_id=1&user_id=${userId}&username=${encodeURIComponent(username)}`;
+    // Добавляем session_id для отслеживания сессии в Compliance Service
+    const url = `ws://${WS_HOST}:${WS_PORT}/ws/chat?room_id=1&user_id=${userId}&username=${encodeURIComponent(username)}&session_id=${encodeURIComponent(sessionId)}`;
     console.log("Connecting to WebSocket:", url);
     ws = new WebSocket(url);
 

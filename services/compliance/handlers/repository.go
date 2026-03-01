@@ -471,3 +471,32 @@ func (r *ComplianceRepository) UpdateLogout(ctx context.Context, sessionID int) 
 	_, err := r.db.ExecContext(ctx, query, sessionID)
 	return err
 }
+
+// UpdateSessionLogout обновляет сессию при LOGOUT/DISCONNECT по session_id
+func (r *ComplianceRepository) UpdateSessionLogout(ctx context.Context, session *UserSession) error {
+	query := `
+		UPDATE user_sessions
+		SET logout_time = NOW(),
+		    duration_seconds = EXTRACT(EPOCH FROM (NOW() - login_time))::INTEGER
+		WHERE user_id = $1 AND session_id = $2
+	`
+	result, err := r.db.ExecContext(ctx, query, session.UserID, session.SessionID)
+	if err != nil {
+		log.Printf("Failed to update session logout: %v", err)
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	// Если сессия не найдена, создаём новую запись (для DISCONNECT без предварительного LOGIN)
+	if rowsAffected == 0 {
+		log.Printf("Session not found for user=%d, session_id=%s, creating new record", session.UserID, session.SessionID)
+		return r.SaveSession(ctx, session)
+	}
+
+	log.Printf("Updated %d session(s) for user=%d, session_id=%s", rowsAffected, session.UserID, session.SessionID)
+	return nil
+}

@@ -162,6 +162,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		Username:     user.Username,
 		Token:        accessToken,
 		RefreshToken: refreshToken,
+		SessionID:    sessionID,  // Сохраняем session_id для Compliance Service
 		ExpiresAt:    time.Now().Add(15 * time.Minute),
 		CreatedAt:    time.Now(),
 	}
@@ -263,7 +264,8 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 	// Отправляем событие LOGOUT в Compliance Service
 	if session != nil {
-		go sendSessionEventToCompliance("LOGOUT", session.UserID, session.Username, token, c.Request)
+		// Используем session_id из сессии (тот же, что и при LOGIN)
+		go sendSessionEventToCompliance("LOGOUT", session.UserID, session.Username, session.SessionID, c.Request)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})

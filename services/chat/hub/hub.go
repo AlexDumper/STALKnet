@@ -10,12 +10,13 @@ import (
 
 // Client представляет подключённого клиента
 type Client struct {
-	Hub      *Hub
-	Conn     *websocket.Conn
-	UserID   int
-	Username string
-	RoomID   int
-	Send     chan []byte
+	Hub       *Hub
+	Conn      *websocket.Conn
+	UserID    int
+	Username  string
+	SessionID string  // Session ID для отслеживания сессий
+	RoomID    int
+	Send      chan []byte
 }
 
 // Hub управляет всеми клиентскими соединениями

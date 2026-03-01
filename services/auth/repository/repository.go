@@ -38,6 +38,7 @@ type Session struct {
 	Username     string    `json:"username"`
 	Token        string    `json:"token"`
 	RefreshToken string    `json:"refresh_token"`
+	SessionID    string    `json:"session_id"`  // Session ID для Compliance Service
 	ExpiresAt    time.Time `json:"expires_at"`
 	CreatedAt    time.Time `json:"created_at"`
 }
