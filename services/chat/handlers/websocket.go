@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/stalknet/services/chat/hub"
+	"github.com/stalknet/services/chat/repository"
 )
 
 var complianceServiceURL = os.Getenv("COMPLIANCE_SERVICE_URL")
@@ -89,6 +90,7 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 		log.Printf("Failed to load recent messages: %v", err)
 		// Продолжаем подключение даже если загрузка не удалась
 	} else {
+		log.Printf("Loaded %d recent messages for room %d", len(messages), roomID)
 		// Отправляем историю сообщений клиенту
 		for _, msg := range messages {
 			msgData := map[string]interface{}{
@@ -102,9 +104,14 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 			}
 			jsonData, err := json.Marshal(msgData)
 			if err == nil {
-				conn.WriteMessage(websocket.TextMessage, jsonData)
+				err = conn.WriteMessage(websocket.TextMessage, jsonData)
+				if err != nil {
+					log.Printf("Failed to send message history: %v", err)
+					break
+				}
 			}
 		}
+		log.Printf("Sent %d messages to client", len(messages))
 	}
 
 	// Отправляем приветственное сообщение о подключении
@@ -178,8 +185,27 @@ func (h *ChatHandler) readPump(client *hub.Client, sessionID, clientIP string, c
 			continue
 		}
 
-		// Отправляем сообщение в Compliance Service для сохранения
+		// Сохраняем сообщение в базу (в обе таблицы: messages и chat_messages)
 		if msg.Type == "message" {
+			chatMsg := &repository.ChatMessage{
+				RoomID:     client.RoomID,
+				UserID:     client.UserID,
+				Username:   client.Username,
+				Content:    msg.Content,
+				ClientIP:   clientIP,
+				ClientPort: clientPort,
+				MessageType: msg.Type,
+				Timestamp:  time.Now(),
+			}
+			
+			// Асинхронное сохранение в базу
+			go func(m *repository.ChatMessage) {
+				if err := h.repo.SaveMessage(context.Background(), m); err != nil {
+					log.Printf("Failed to save message: %v", err)
+				}
+			}(chatMsg)
+			
+			// Отправляем в Compliance Service для ФЗ-374
 			go sendToComplianceService(client.RoomID, client.UserID, client.Username, msg.Content, clientIP, clientPort, msg.Type)
 		}
 
