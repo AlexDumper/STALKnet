@@ -158,9 +158,11 @@ CREATE TABLE messages (
 
 **Важно:**
 - Таблица хранит только последние 50 сообщений на комнату
-- При сохранении нового сообщения старые автоматически удаляются
+- При сохранении нового сообщения старые автоматически удаляются (SQL-запрос с LIMIT 50)
 - Данные дублируются в `chat_messages` для соблюдения ФЗ-374
 - Используется для быстрой загрузки истории при подключении WebSocket
+- **Запись производится через `ChatRepository.SaveMessage()`** — метод сохраняет в обе таблицы одновременно (транзакция)
+- **Чтение выполняется через `ChatRepository.GetRecentMessages()`** — загружает последние 50 сообщений с JOIN к таблице users
 
 ---
 
@@ -382,6 +384,43 @@ SELECT DATE(timestamp) as date, COUNT(*) as messages_count
 FROM chat_messages GROUP BY DATE(timestamp) ORDER BY date DESC;
 ```
 
+---
+
+## 🔄 Поток данных при подключении WebSocket
+
+### 1. Подключение пользователя
+
+```
+GET /ws/chat?room_id=1&user_id=5&username=BG
+```
+
+### 2. Загрузка истории
+
+```
+ChatHandler.HandleWebSocket()
+  → ChatRepository.GetRecentMessages(roomID=1, limit=50)
+    → SELECT из messages JOIN users
+    → Реверс порядка (старые → новые)
+  → Отправка клиенту (с флагом from_history: true)
+```
+
+### 3. Сохранение нового сообщения
+
+```
+ChatHandler.readPump()
+  → Получение сообщения от клиента
+  → ChatRepository.SaveMessage()
+    → BEGIN TRANSACTION
+    → INSERT INTO messages (room_id, user_id, content)
+    → INSERT INTO chat_messages (room_id, user_id, username, content, client_ip, ...)
+    → DELETE FROM messages (оставить последние 50)
+    → COMMIT
+  → Отправка в Compliance Service (для ФЗ-374)
+  → Broadcast всем клиентам в комнате
+```
+
+---
+
 ### События пользователей (Compliance)
 
 ```sql
@@ -573,3 +612,20 @@ UNION ALL SELECT 'user_sessions', COUNT(*) FROM user_sessions;
 **Дата обновления:** 2026-03-02  
 **Версия:** v0.1.13  
 **Статус:** ✅ Актуально
+
+---
+
+## 📊 История изменений
+
+### v0.1.13 (2026-03-02)
+
+**Новые возможности:**
+- ✅ Загрузка последних 50 сообщений при подключении WebSocket
+- ✅ Двухтабличная архитектура хранения сообщений (messages + chat_messages)
+- ✅ Автоматическая очистка старых сообщений из messages (>50)
+- ✅ Быстрый SELECT из messages с JOIN к users
+
+**Изменения:**
+- Обновлён `ChatRepository.SaveMessage()` — запись в обе таблицы
+- Добавлен `ChatRepository.GetRecentMessages()` — загрузка истории
+- Обновлён `websocket.go` — загрузка при подключении и запись новых сообщений
