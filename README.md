@@ -741,11 +741,7 @@ ws.send(JSON.stringify({
 |------|----------|
 | **[DATABASE.md](DATABASE.md)** | **Полная документация по базе данных** ⭐ |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Продакшн-развертывание |
+| [DEPLOYMENT_CLOUD_RU.md](DEPLOYMENT_CLOUD_RU.md) | Развёртывание на Cloud.ru |
+| [SERVER_ACCESS.md](SERVER_ACCESS.md) | Доступ к серверу (SSH, PostgreSQL) |
 | [PRODUCTION_READY.md](PRODUCTION_READY.md) | Отчёт о продакшн-подготовке |
-| [USERS_TABLE.md](USERS_TABLE.md) | Таблица пользователей (устарело) |
-| [ROOMS_TABLE.md](ROOMS_TABLE.md) | Таблица комнат (устарело) |
-| [TASKS_TABLE.md](TASKS_TABLE.md) | Таблица задач (устарело) |
-| [USER_SESSIONS.md](USER_SESSIONS.md) | Сессии пользователей (устарело) |
-| [USER_EVENTS.md](USER_EVENTS.md) | События пользователей (устарело) |
-| [CHAT_MESSAGES_STORAGE.md](CHAT_MESSAGES_STORAGE.md) | Сохранение сообщений чата (устарело) |
 | [WEB_CLIENT.md](WEB_CLIENT.md) | Веб-клиент |
