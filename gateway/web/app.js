@@ -11,7 +11,7 @@ const versionDisplay = document.getElementById("versionDisplay");
 const API_BASE = window.location.origin;
 
 // Версия приложения
-const APP_VERSION = "0.1.12";
+const APP_VERSION = "0.1.13";
 
 // Отображение версии
 if (versionDisplay) {
