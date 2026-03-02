@@ -83,7 +83,31 @@ func (h *ChatHandler) HandleWebSocket(c *gin.Context) {
 	// Регистрируем клиента
 	client.Hub.Register <- client
 
-	// Отправляем приветственное сообщение
+	// Загружаем последние 50 сообщений из оперативной таблицы messages
+	messages, err := h.repo.GetRecentMessages(c.Request.Context(), roomID, 50)
+	if err != nil {
+		log.Printf("Failed to load recent messages: %v", err)
+		// Продолжаем подключение даже если загрузка не удалась
+	} else {
+		// Отправляем историю сообщений клиенту
+		for _, msg := range messages {
+			msgData := map[string]interface{}{
+				"type":       "message",
+				"room_id":    msg.RoomID,
+				"user_id":    msg.UserID,
+				"username":   msg.Username,
+				"content":    msg.Content,
+				"timestamp":  msg.Timestamp.Format(time.RFC3339),
+				"from_history": true, // Флаг, что это сообщение из истории
+			}
+			jsonData, err := json.Marshal(msgData)
+			if err == nil {
+				conn.WriteMessage(websocket.TextMessage, jsonData)
+			}
+		}
+	}
+
+	// Отправляем приветственное сообщение о подключении
 	h.hub.Broadcast(roomID, 0, "system", username+" присоединился к чату", "system")
 
 	// Запускаем горутину для записи

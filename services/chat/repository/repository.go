@@ -33,14 +33,32 @@ func NewChatRepository(db *sql.DB) *ChatRepository {
 }
 
 // SaveMessage сохраняет сообщение в базу данных
+// Запись производится в обе таблицы: messages (оперативная) и chat_messages (ФЗ-374)
 func (r *ChatRepository) SaveMessage(ctx context.Context, msg *ChatMessage) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Printf("Failed to begin transaction: %v", err)
+		return err
+	}
+	defer tx.Rollback()
+
+	// 1. Вставляем в messages (оперативная таблица для быстрой загрузки истории)
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO messages (room_id, user_id, content, created_at)
+		VALUES ($1, $2, $3, NOW())
+	`, msg.RoomID, msg.UserID, msg.Content)
+	if err != nil {
+		log.Printf("Failed to insert into messages: %v", err)
+		return err
+	}
+
+	// 2. Вставляем в chat_messages (для соблюдения ФЗ-374)
 	query := `
 		INSERT INTO chat_messages (room_id, user_id, username, content, client_ip, client_port, message_type, timestamp)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id
 	`
-
-	err := r.db.QueryRowContext(ctx, query,
+	err = tx.QueryRowContext(ctx, query,
 		msg.RoomID,
 		msg.UserID,
 		msg.Username,
@@ -50,9 +68,30 @@ func (r *ChatRepository) SaveMessage(ctx context.Context, msg *ChatMessage) erro
 		msg.MessageType,
 		msg.Timestamp,
 	).Scan(&msg.ID)
-
 	if err != nil {
-		log.Printf("Failed to save chat message: %v", err)
+		log.Printf("Failed to insert into chat_messages: %v", err)
+		return err
+	}
+
+	// 3. Удаляем старые сообщения из messages (оставляем последние 50 на комнату)
+	_, err = tx.ExecContext(ctx, `
+		DELETE FROM messages
+		WHERE room_id = $1
+		  AND id NOT IN (
+		    SELECT id FROM messages
+		    WHERE room_id = $1
+		    ORDER BY created_at DESC
+		    LIMIT 50
+		  )
+	`, msg.RoomID)
+	if err != nil {
+		log.Printf("Failed to cleanup old messages: %v", err)
+		return err
+	}
+
+	// Фиксируем транзакцию
+	if err := tx.Commit(); err != nil {
+		log.Printf("Failed to commit transaction: %v", err)
 		return err
 	}
 
@@ -60,7 +99,8 @@ func (r *ChatRepository) SaveMessage(ctx context.Context, msg *ChatMessage) erro
 	return nil
 }
 
-// GetMessagesByRoom получает сообщения для указанной комнаты
+// GetMessagesByRoom получает сообщения для указанной комнаты (из chat_messages)
+// Используется для API запросов истории
 func (r *ChatRepository) GetMessagesByRoom(ctx context.Context, roomID int, limit, offset int) ([]ChatMessage, error) {
 	query := `
 		SELECT id, room_id, user_id, username, content, client_ip, client_port, timestamp, message_type
@@ -97,6 +137,52 @@ func (r *ChatRepository) GetMessagesByRoom(ctx context.Context, roomID int, limi
 	}
 
 	// Реверсируем порядок (новые сверху)
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, nil
+}
+
+// GetRecentMessages получает последние сообщения для отображения при подключении
+// Загружает из оперативной таблицы messages (быстрый доступ)
+func (r *ChatRepository) GetRecentMessages(ctx context.Context, roomID int, limit int) ([]ChatMessage, error) {
+	query := `
+		SELECT m.id, m.room_id, m.user_id, u.username, m.content, m.created_at
+		FROM messages m
+		JOIN users u ON m.user_id = u.id
+		WHERE m.room_id = $1
+		ORDER BY m.created_at DESC
+		LIMIT $2
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, roomID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []ChatMessage
+	for rows.Next() {
+		var msg ChatMessage
+		var createdAt time.Time
+		err := rows.Scan(
+			&msg.ID,
+			&msg.RoomID,
+			&msg.UserID,
+			&msg.Username,
+			&msg.Content,
+			&createdAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		msg.Timestamp = createdAt
+		msg.MessageType = "message"
+		messages = append(messages, msg)
+	}
+
+	// Реверсируем порядок (старые сообщения первыми, новые последними)
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]
 	}

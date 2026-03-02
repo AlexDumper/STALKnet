@@ -34,7 +34,9 @@ CREATE TABLE IF NOT EXISTS room_members (
     PRIMARY KEY (room_id, user_id)
 );
 
--- Сообщения
+-- Сообщения (оперативная таблица для быстрого доступа)
+-- Хранит последние 50 сообщений для каждой комнаты
+-- Данные автоматически копируются в chat_messages для ФЗ-374
 CREATE TABLE IF NOT EXISTS messages (
     id SERIAL PRIMARY KEY,
     room_id INTEGER REFERENCES rooms(id) ON DELETE CASCADE,
@@ -46,6 +48,7 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX idx_messages_room_id ON messages(room_id);
 CREATE INDEX idx_messages_user_id ON messages(user_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at);
+CREATE INDEX idx_messages_room_created ON messages(room_id, created_at DESC);
 
 -- История сообщений чата (для соблюдения ФЗ-374)
 CREATE TABLE IF NOT EXISTS chat_messages (

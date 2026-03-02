@@ -12,6 +12,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/gin-gonic/gin"
 	"github.com/stalknet/services/chat/hub"
+	"github.com/stalknet/services/chat/repository"
 )
 
 // SetupRouter настраивает роутер chat service
@@ -86,13 +87,13 @@ func initDatabase(host, port, user, password, dbname string) *sql.DB {
 
 type ChatHandler struct {
 	hub  *hub.Hub
-	db   *sql.DB
+	repo *repository.ChatRepository
 }
 
 func NewChatHandler(wsHub *hub.Hub, db *sql.DB) *ChatHandler {
 	return &ChatHandler{
-		hub: wsHub,
-		db:  db,
+		hub:  wsHub,
+		repo: repository.NewChatRepository(db),
 	}
 }
 
@@ -138,64 +139,17 @@ func (h *ChatHandler) GetMessages(c *gin.Context) {
 	if o := c.Query("offset"); o != "" {
 		fmt.Sscanf(o, "%d", &offset)
 	}
-	
-	// Получение сообщений из БД через Compliance Service
+
+	// Получение сообщений из БД через репозиторий
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
-	query := `
-		SELECT id, room_id, user_id, username, content, client_ip, client_port, timestamp, message_type
-		FROM chat_messages
-		WHERE room_id = $1
-		ORDER BY timestamp DESC
-		LIMIT $2 OFFSET $3
-	`
-	
-	rows, err := h.db.QueryContext(ctx, query, roomID, limit, offset)
+
+	messages, err := h.repo.GetMessagesByRoom(ctx, roomID, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get messages"})
 		return
 	}
-	defer rows.Close()
-	
-	type Message struct {
-		ID          int       `json:"id"`
-		RoomID      int       `json:"room_id"`
-		UserID      int       `json:"user_id"`
-		Username    string    `json:"username"`
-		Content     string    `json:"content"`
-		ClientIP    string    `json:"client_ip"`
-		ClientPort  int       `json:"client_port"`
-		Timestamp   time.Time `json:"timestamp"`
-		MessageType string    `json:"message_type"`
-	}
-	
-	var messages []Message
-	for rows.Next() {
-		var msg Message
-		err := rows.Scan(
-			&msg.ID,
-			&msg.RoomID,
-			&msg.UserID,
-			&msg.Username,
-			&msg.Content,
-			&msg.ClientIP,
-			&msg.ClientPort,
-			&msg.Timestamp,
-			&msg.MessageType,
-		)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan message"})
-			return
-		}
-		messages = append(messages, msg)
-	}
-	
-	// Реверсируем порядок
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
-	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"messages": messages,
 		"room_id":  roomID,

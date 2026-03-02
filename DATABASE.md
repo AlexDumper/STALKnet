@@ -136,7 +136,9 @@ CREATE TABLE room_members (
 
 ---
 
-### 4. messages (Сообщения)
+### 4. messages (Сообщения — оперативная таблица)
+
+**Назначение:** Хранение последних 50 сообщений для каждой комнаты для быстрой загрузки истории при подключении пользователя.
 
 ```sql
 CREATE TABLE messages (
@@ -152,6 +154,13 @@ CREATE TABLE messages (
 - `idx_messages_room_id` — поиск по комнате
 - `idx_messages_user_id` — поиск по пользователю
 - `idx_messages_created_at` — поиск по времени
+- `idx_messages_room_created` — поиск по комнате + времени (DESC, для быстрой загрузки последних сообщений)
+
+**Важно:**
+- Таблица хранит только последние 50 сообщений на комнату
+- При сохранении нового сообщения старые автоматически удаляются
+- Данные дублируются в `chat_messages` для соблюдения ФЗ-374
+- Используется для быстрой загрузки истории при подключении WebSocket
 
 ---
 
@@ -353,7 +362,15 @@ SELECT * FROM users WHERE username = 'BG';
 ### Сообщения
 
 ```sql
--- Последние 50 сообщений из комнаты
+-- Последние 50 сообщений из комнаты (быстрая загрузка из messages)
+SELECT m.username, m.content, m.timestamp
+FROM messages m
+JOIN users u ON m.user_id = u.id
+WHERE m.room_id = 1
+ORDER BY m.created_at DESC
+LIMIT 50;
+
+-- Последние 50 сообщений из комнаты (из chat_messages, для ФЗ-374)
 SELECT username, content, timestamp FROM chat_messages
 WHERE room_id = 1 ORDER BY timestamp DESC LIMIT 50;
 
