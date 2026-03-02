@@ -76,17 +76,28 @@
 
 #### 2.1 Подключение по SSH
 
-**Windows (PowerShell):**
+**Production-сервер STALKnet:**
+```
+IP:         87.242.103.13
+Пользователь: root
+Порт:       22
+```
+
+**Windows (PowerShell) — подключение с ключом:**
 ```powershell
-ssh root@185.123.45.67
+# Подключение к production-серверу
+ssh -i C:\Users\User\.ssh\id_ed25519 root@87.242.103.13
+
+# Или через переменную окружения
+ssh -i $env:USERPROFILE\.ssh\id_ed25519 root@87.242.103.13
 ```
 
 **Linux/Mac:**
 ```bash
-ssh root@185.123.45.67
+ssh -i ~/.ssh/id_ed25519 root@87.242.103.13
 ```
 
-**С SSH-ключом:**
+**С SSH-ключом (настройка для нового сервера):**
 ```bash
 # Генерация ключа
 ssh-keygen -t ed25519
@@ -96,6 +107,27 @@ ssh-copy-id root@185.123.45.67
 
 # Подключение
 ssh -i ~/.ssh/id_ed25519 root@185.123.45.67
+```
+
+---
+
+#### 🔑 Важные заметки по SSH
+
+**Если подключение не работает:**
+
+| Проблема | Решение |
+|----------|---------|
+| `Permission denied (publickey)` | Используется неправильный ключ или пользователь. Для STALKnet: `root@87.242.103.13` с ключом `id_ed25519` |
+| `Connection refused` | Проверьте, что сервер запущен и порт 22 открыт в группе безопасности |
+| `Connection timed out` | Проверьте доступность: `Test-NetConnection 87.242.103.13 -Port 22` |
+
+**Проверка доступных ключей:**
+```powershell
+# Показать все ключи в ~/.ssh
+dir $env:USERPROFILE\.ssh\id_*
+
+# Показать отпечаток ключа
+ssh-keygen -lf C:\Users\User\.ssh\id_ed25519
 ```
 
 ---

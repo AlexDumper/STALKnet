@@ -301,6 +301,38 @@ http://87.242.103.13:8080
 
 ---
 
+### 🔌 Подключение к серверу
+
+**SSH-подключение (Windows PowerShell):**
+```powershell
+ssh -i C:\Users\User\.ssh\id_ed25519 root@87.242.103.13
+```
+
+**SSH-подключение (Linux/Mac):**
+```bash
+ssh -i ~/.ssh/id_ed25519 root@87.242.103.13
+```
+
+**Прямое подключение к PostgreSQL:**
+```bash
+# Через psql
+PGPASSWORD=stalknet_secret psql -h 87.242.103.13 -U stalknet -d stalknet
+
+# Или через connection string
+psql "postgresql://stalknet:stalknet_secret@87.242.103.13:5432/stalknet"
+```
+
+**Параметры PostgreSQL:**
+```
+Host:     87.242.103.13
+Port:     5432
+Database: stalknet
+User:     stalknet
+Password: stalknet_secret
+```
+
+---
+
 ### Вариант 1: Запуск через Docker (рекомендуется)
 
 ```bash
