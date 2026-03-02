@@ -366,12 +366,17 @@ function addMessage(text, type, msgUsername = null, isReply = false, recipientUs
     const div = document.createElement("div");
     div.className = "message " + type;
 
+    // Добавляем класс 'own' для сообщений текущего пользователя
+    if (type === "user" && msgUsername === username) {
+        div.className += " own";
+    }
+
     if (isReply && type === "user") {
         div.className += " reply";
     }
 
-    const time = new Date().toLocaleTimeString('ru-RU', { 
-        hour: '2-digit', 
+    const time = new Date().toLocaleTimeString('ru-RU', {
+        hour: '2-digit',
         minute: '2-digit'
     });
     let usernameDisplay = "";

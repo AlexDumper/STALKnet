@@ -365,6 +365,11 @@ function addMessage(text, type, msgUsername = null, isReply = false, recipientUs
     const div = document.createElement("div");
     div.className = "message " + type;
 
+    // Добавляем класс 'own' для сообщений текущего пользователя
+    if (type === "user" && msgUsername === username) {
+        div.className += " own";
+    }
+
     if (isReply && type === "user") {
         div.className += " reply";
     }
