@@ -740,6 +740,7 @@ ws.send(JSON.stringify({
 | Файл | Описание |
 |------|----------|
 | **[DATABASE.md](DATABASE.md)** | **Полная документация по базе данных** ⭐ |
+| **[CHANGELOG.md](CHANGELOG.md)** | **История изменений** 📝 |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Продакшн-развертывание |
 | [DEPLOYMENT_CLOUD_RU.md](DEPLOYMENT_CLOUD_RU.md) | Развёртывание на Cloud.ru |
 | [SERVER_ACCESS.md](SERVER_ACCESS.md) | Доступ к серверу (SSH, PostgreSQL) |
