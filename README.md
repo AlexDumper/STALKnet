@@ -255,7 +255,7 @@ GET /ws/chat?room_id=1&user_id=5&username=BG
 **Верхняя панель:**
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  ☢ STALKnet  v0.1.16              Guest  ●                       │
+│  ☢ STALKnet  v0.1.17              Guest  ●                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -397,7 +397,38 @@ go run main_web.go
 
 ### 📦 Продакшн-развертывание
 
-Для развёртывания в продакшн-среде см. [DEPLOYMENT.md](DEPLOYMENT.md).
+#### 🚀 Развёртывание через GitHub (CI/CD)
+
+**Автоматическое развёртывание** при пуше в ветку `main` с использованием GitHub Actions.
+
+**Настройка:**
+1. Добавьте секреты в GitHub: **Settings** → **Secrets and variables** → **Actions**
+   - `SSH_PRIVATE_KEY` — приватный SSH ключ
+   - `PRODUCTION_HOST` — IP сервера (например, `87.242.103.13`)
+   - `SSH_USER` — пользователь (обычно `root`)
+
+2. Склонируйте репозиторий на сервер:
+```bash
+ssh root@87.242.103.13
+cd /opt
+git clone https://github.com/AlexDumper/STALKnet.git
+cd STALKnet
+cp .env.production.example .env.production
+# Отредактируйте .env.production (JWT_SECRET, DB_PASSWORD)
+```
+
+3. Пуш в `main` запустит автоматическое развёртывание:
+```bash
+git add .
+git commit -m "feat: новое функциональное обновление"
+git push origin main
+```
+
+📖 **Подробная документация:** [GITHUB_DEPLOY.md](GITHUB_DEPLOY.md)
+
+---
+
+#### 📝 Ручное развёртывание
 
 **Быстрый старт для продакшена:**
 
@@ -430,7 +461,7 @@ docker-compose -f docker-compose.traefik.yml up -d
 
 ### Версионирование
 
-Версия приложения отображается в заголовке справа: **STALKnet v0.1.16**
+Версия приложения отображается в заголовке справа: **STALKnet v0.1.17**
 
 **Автоматическое обновление:**
 ```powershell
@@ -743,6 +774,7 @@ ws.send(JSON.stringify({
 | **[DATABASE.md](DATABASE.md)** | **Полная документация по базе данных** ⭐ |
 | **[CHANGELOG.md](CHANGELOG.md)** | **История изменений** 📝 |
 | **[PRIVATE_MESSAGES.md](PRIVATE_MESSAGES.md)** | **Личные сообщения** 📫 |
+| **[GITHUB_DEPLOY.md](GITHUB_DEPLOY.md)** | **Развёртывание через GitHub (CI/CD)** 🚀 |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Продакшн-развертывание |
 | [DEPLOYMENT_CLOUD_RU.md](DEPLOYMENT_CLOUD_RU.md) | Развёртывание на Cloud.ru |
 | [SERVER_ACCESS.md](SERVER_ACCESS.md) | Доступ к серверу (SSH, PostgreSQL) |

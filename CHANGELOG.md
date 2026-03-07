@@ -1,5 +1,48 @@
 # 📝 Журнал изменений STALKnet
 
+## [v0.1.17] - 2026-03-07
+
+### 🐛 Исправление поиска пользователей для приватных сообщений
+
+#### Проблема
+При отправке приватных сообщений (`/private <имя> <текст>`) Chat Service не мог найти пользователей и возвращал ошибку:
+```
+❌ User 'username' not found
+```
+
+#### Причина
+Переменная окружения `AUTH_SERVICE_URL` не была настроена в `docker-compose.prod.yml` для Chat Service. 
+Код использовал значение по умолчанию `http://localhost:8081`, но внутри контейнера `localhost` — это сам контейнер чата, 
+а не хост-машина или другие контейнеры.
+
+#### Решение
+Добавлена переменная окружения `AUTH_SERVICE_URL=http://auth:8081` в конфигурацию Chat Service.
+
+**Изменённые файлы:**
+- `docker-compose.prod.yml` — добавлена переменная `AUTH_SERVICE_URL` для сервиса `chat`
+- `scripts/update-prod.sh` — обновлён скрипт для автоматического удаления старых контейнеров перед перезапуском
+
+**Файлы:**
+- `services/chat/handlers/handlers.go` — `NewChatHandler()` использует `os.Getenv("AUTH_SERVICE_URL")`
+- `services/chat/main.go` — передача `authURL` в `SetupRouter()` (требуется обновление)
+
+---
+
+### 🚀 GitHub CI/CD
+
+#### Новые файлы для автоматического развёртывания
+- `.github/workflows/deploy.yml` — workflow для автоматического деплоя при пуше в `main`
+- `.github/ENV_SETUP.md` — инструкция по настройке GitHub Secrets
+- `scripts/update-prod.sh` — bash-скрипт для обновления на сервере
+- `scripts/update-prod-remote.ps1` — PowerShell-скрипт для удалённого обновления
+- `GITHUB_DEPLOY.md` — полное руководство по развёртыванию через GitHub
+
+#### Обновлённые файлы
+- `README.md` — добавлен раздел о GitHub CI/CD
+- `docker-compose.prod.yml` — добавлена переменная `AUTH_SERVICE_URL` для Chat Service
+
+---
+
 ## [v0.1.16] - 2026-03-07
 
 ### 🔐 Увеличение срока действия сессии
