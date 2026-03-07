@@ -187,6 +187,7 @@ services:
       - DB_NAME=${DB_NAME:-stalknet}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - AUTH_SERVICE_URL=http://auth:8081
       - PORT=8083
     depends_on:
       postgres:
