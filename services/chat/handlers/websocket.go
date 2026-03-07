@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -176,42 +177,155 @@ func (h *ChatHandler) readPump(client *hub.Client, sessionID, clientIP string, c
 		}
 
 		// Обрабатываем JSON сообщение
-		var msg struct {
-			Type    string `json:"type"`
-			Content string `json:"content"`
-		}
-		if err := json.Unmarshal(message, &msg); err != nil {
+		var rawMsg map[string]interface{}
+		if err := json.Unmarshal(message, &rawMsg); err != nil {
 			log.Printf("JSON parse error: %v", err)
 			continue
 		}
 
-		// Сохраняем сообщение в базу (в обе таблицы: messages и chat_messages)
-		if msg.Type == "message" {
+		msgType, ok := rawMsg["type"].(string)
+		if !ok {
+			log.Printf("Invalid message type")
+			continue
+		}
+
+		content, _ := rawMsg["content"].(string)
+
+		// Обработка обычного сообщения
+		if msgType == "message" {
 			chatMsg := &repository.ChatMessage{
 				RoomID:     client.RoomID,
 				UserID:     client.UserID,
 				Username:   client.Username,
-				Content:    msg.Content,
+				Content:    content,
 				ClientIP:   clientIP,
 				ClientPort: clientPort,
-				MessageType: msg.Type,
+				MessageType: msgType,
 				Timestamp:  time.Now(),
 			}
-			
+
 			// Асинхронное сохранение в базу
 			go func(m *repository.ChatMessage) {
 				if err := h.repo.SaveMessage(context.Background(), m); err != nil {
 					log.Printf("Failed to save message: %v", err)
 				}
 			}(chatMsg)
-			
+
 			// Отправляем в Compliance Service для ФЗ-374
-			go sendToComplianceService(client.RoomID, client.UserID, client.Username, msg.Content, clientIP, clientPort, msg.Type)
+			go sendToComplianceService(client.RoomID, client.UserID, client.Username, content, clientIP, clientPort, msgType)
+
+			// Отправляем сообщение всем в комнате
+			h.hub.Broadcast(client.RoomID, client.UserID, client.Username, content, msgType)
 		}
 
-		// Отправляем сообщение всем в комнате
-		h.hub.Broadcast(client.RoomID, client.UserID, client.Username, msg.Content, msg.Type)
+		// Обработка личного сообщения
+		if msgType == "private_message" {
+			recipientUsername, _ := rawMsg["recipient_username"].(string)
+
+			if recipientUsername == "" {
+				sendError(client.Conn, "recipient_username is required")
+				continue
+			}
+
+			if recipientUsername == client.Username {
+				sendError(client.Conn, "Cannot send private message to yourself")
+				continue
+			}
+
+			// Ищем получателя через Auth Service
+			recipientID, recipientName, err := h.findUserByUsername(context.Background(), recipientUsername)
+			if err != nil {
+				sendError(client.Conn, fmt.Sprintf("User '%s' not found", recipientUsername))
+				continue
+			}
+
+			// Создаём контакты: [отправитель, получатель]
+			contacts := []repository.Contact{
+				{ID: client.UserID, Name: client.Username},
+				{ID: recipientID, Name: recipientName},
+			}
+
+			// Создаём сообщение для БД
+			privateMsg := &repository.ChatMessage{
+				RoomID:        client.RoomID,
+				UserID:        client.UserID,
+				Username:      client.Username,
+				Content:       content,
+				ClientIP:      clientIP,
+				ClientPort:    clientPort,
+				MessageType:   "private",
+				Contacts:      contacts,
+				RecipientID:   recipientID,
+				RecipientName: recipientName,
+				Timestamp:     time.Now(),
+			}
+
+			// Асинхронное сохранение в chat_messages (для ФЗ-374)
+			go func(m *repository.ChatMessage) {
+				if err := h.repo.SavePrivateMessage(context.Background(), m); err != nil {
+					log.Printf("Failed to save private message: %v", err)
+				}
+			}(privateMsg)
+
+			// Отправляем в Compliance Service
+			go sendPrivateMessageToCompliance(client.RoomID, client.UserID, client.Username, recipientID, recipientName, content, clientIP, clientPort)
+
+			// Проверяем: получатель онлайн?
+			isOnline := h.hub.IsUserOnline(recipientID)
+
+			if isOnline {
+				// Преобразуем contacts в тип hub.Contact
+				hubContacts := make([]hub.Contact, len(contacts))
+				for i, c := range contacts {
+					hubContacts[i] = hub.Contact{ID: c.ID, Name: c.Name}
+				}
+
+				// Отправляем сообщение через Broadcast с фильтрацией
+				h.hub.BroadcastPrivate(client.RoomID, client.UserID, client.Username, content, "private", hubContacts)
+			} else {
+				// Получатель офлайн - сохраняем в private_messages_offline
+				offlineMsg := &repository.OfflinePrivateMessage{
+					SenderID:       client.UserID,
+					SenderUsername: client.Username,
+					RecipientID:    recipientID,
+					Content:        content,
+				}
+				go func(m *repository.OfflinePrivateMessage) {
+					if err := h.repo.SaveOfflinePrivateMessage(context.Background(), m); err != nil {
+						log.Printf("Failed to save offline private message: %v", err)
+					}
+				}(offlineMsg)
+
+				log.Printf("Offline private message saved: from=%s, to=%s (ID=%d)",
+					client.Username, recipientName, recipientID)
+			}
+
+			// Подтверждение отправителю
+			sendPrivateMessageSent(client.Conn, recipientName, content)
+		}
 	}
+}
+
+// sendError отправляет ошибку клиенту
+func sendError(conn *websocket.Conn, errorMsg string) {
+	resp := map[string]interface{}{
+		"type":  "error",
+		"error": errorMsg,
+	}
+	data, _ := json.Marshal(resp)
+	conn.WriteMessage(websocket.TextMessage, data)
+}
+
+// sendPrivateMessageSent отправляет подтверждение об отправке личного сообщения
+func sendPrivateMessageSent(conn *websocket.Conn, recipientName, content string) {
+	resp := map[string]interface{}{
+		"type":             "private_message_sent",
+		"recipient_username": recipientName,
+		"content":          content,
+		"timestamp":        time.Now().Format(time.RFC3339),
+	}
+	data, _ := json.Marshal(resp)
+	conn.WriteMessage(websocket.TextMessage, data)
 }
 
 // sendToComplianceService отправляет сообщение в Compliance Service для сохранения
@@ -264,6 +378,76 @@ func sendToComplianceService(roomID, userID int, username, content, clientIP str
 		log.Printf("Compliance service returned status: %d", resp.StatusCode)
 	} else {
 		log.Printf("Message sent to compliance service: user=%s, room=%d", username, roomID)
+	}
+}
+
+// sendPrivateMessageToCompliance отправляет личное сообщение в Compliance Service
+func sendPrivateMessageToCompliance(roomID, senderID int, senderUsername string, recipientID int, recipientUsername, content, clientIP string, clientPort int) {
+	complianceMsg := struct {
+		RoomID           int       `json:"room_id"`
+		SenderID         int       `json:"sender_id"`
+		SenderUsername   string    `json:"sender_username"`
+		RecipientID      int       `json:"recipient_id"`
+		RecipientUsername string   `json:"recipient_username"`
+		Content          string    `json:"content"`
+		ClientIP         string    `json:"client_ip"`
+		ClientPort       int       `json:"client_port"`
+		MessageType      string    `json:"message_type"`
+		Contacts         []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"contacts"`
+		Timestamp time.Time `json:"timestamp"`
+	}{
+		RoomID:            roomID,
+		SenderID:          senderID,
+		SenderUsername:    senderUsername,
+		RecipientID:       recipientID,
+		RecipientUsername: recipientUsername,
+		Content:           content,
+		ClientIP:          clientIP,
+		ClientPort:        clientPort,
+		MessageType:       "private",
+		Timestamp:         time.Now(),
+	}
+	
+	// Добавляем контакты
+	complianceMsg.Contacts = []struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}{
+		{ID: senderID, Name: senderUsername},
+		{ID: recipientID, Name: recipientUsername},
+	}
+
+	jsonData, err := json.Marshal(complianceMsg)
+	if err != nil {
+		log.Printf("Failed to marshal private compliance message: %v", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", complianceServiceURL+"/api/compliance/messages", bytes.NewReader(jsonData))
+	if err != nil {
+		log.Printf("Failed to create private compliance request: %v", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to send private message to compliance service: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		log.Printf("Compliance service returned status: %d", resp.StatusCode)
+	} else {
+		log.Printf("Private message sent to compliance: from=%s, to=%s", senderUsername, recipientUsername)
 	}
 }
 

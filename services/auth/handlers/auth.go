@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -169,7 +170,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		Token:        accessToken,
 		RefreshToken: refreshToken,
 		SessionID:    sessionID,  // Сохраняем session_id для Compliance Service
-		ExpiresAt:    time.Now().Add(15 * time.Minute),
+		ExpiresAt:    time.Now().Add(3 * 24 * time.Hour),  // 3 дня для автологина
 		CreatedAt:    time.Now(),
 	}
 
@@ -185,7 +186,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, TokenResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		ExpiresIn:    int64(15 * time.Minute),
+		ExpiresIn:    int64(3 * 24 * time.Hour),  // 3 дня
 		UserID:       user.ID,
 		Username:     user.Username,
 		SessionID:    sessionID,
@@ -314,15 +315,15 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	// Обновляем сессию
+	// Обновляем сессию на 3 дня
 	session.Token = newAccessToken
-	session.ExpiresAt = time.Now().Add(15 * time.Minute)
+	session.ExpiresAt = time.Now().Add(3 * 24 * time.Hour)
 	_ = h.repo.CreateSession(ctx, session)
 
 	c.JSON(http.StatusOK, TokenResponse{
 		AccessToken:  newAccessToken,
 		RefreshToken: session.RefreshToken,
-		ExpiresIn:    int64(15 * time.Minute),
+		ExpiresIn:    int64(3 * 24 * time.Hour),  // 3 дня
 		UserID:       session.UserID,
 		Username:     session.Username,
 		SessionID:    newAccessToken[:16],
@@ -389,12 +390,67 @@ func (h *AuthHandler) GetSessionInfo(c *gin.Context) {
 	})
 }
 
+// SearchUsers ищет пользователей по имени (частичное совпадение)
+func (h *AuthHandler) SearchUsers(c *gin.Context) {
+	ctx := context.Background()
+
+	query := c.Query("username")
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "username query parameter is required"})
+		return
+	}
+
+	users, err := h.repo.SearchUsersByUsername(ctx, query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"users": users,
+		"count": len(users),
+	})
+}
+
+// GetUserByID возвращает информацию о пользователе по ID
+func (h *AuthHandler) GetUserByID(c *gin.Context) {
+	ctx := context.Background()
+
+	userID := c.Param("id")
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user id is required"})
+		return
+	}
+
+	var id int
+	if _, err := fmt.Sscanf(userID, "%d", &id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id"})
+		return
+	}
+
+	user, err := h.repo.GetUserByID(ctx, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		return
+	}
+	if user == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":       user.ID,
+		"username": user.Username,
+		"status":   user.Status,
+	})
+}
+
 func (h *AuthHandler) generateTokens(userID int, username string) (string, string, error) {
-	// Access token (15 минут)
+	// Access token (3 дня)
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id":  userID,
 		"username": username,
-		"exp":      time.Now().Add(15 * time.Minute).Unix(),
+		"exp":      time.Now().Add(3 * 24 * time.Hour).Unix(),
 		"iat":      time.Now().Unix(),
 	})
 

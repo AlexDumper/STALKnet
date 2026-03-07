@@ -60,7 +60,8 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     client_ip VARCHAR(45) NOT NULL,
     client_port INTEGER NOT NULL,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    message_type VARCHAR(20) DEFAULT 'message',
+    message_type VARCHAR(20) DEFAULT 'message',  -- 'message', 'system', 'task', 'private'
+    contacts JSONB DEFAULT NULL,                -- [{"id": 1, "name": "Alex"}, {"id": 2, "name": "BG"}] для личных сообщений
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -69,6 +70,8 @@ CREATE INDEX idx_chat_messages_user_id ON chat_messages(user_id);
 CREATE INDEX idx_chat_messages_timestamp ON chat_messages(timestamp);
 CREATE INDEX idx_chat_messages_username ON chat_messages(username);
 CREATE INDEX idx_chat_messages_room_timestamp ON chat_messages(room_id, timestamp DESC);
+CREATE INDEX idx_chat_messages_contacts ON chat_messages USING GIN(contacts);
+CREATE INDEX idx_chat_messages_message_type ON chat_messages(message_type);
 
 -- Задачи
 CREATE TABLE IF NOT EXISTS tasks (
@@ -149,6 +152,7 @@ INSERT INTO static_content (content_key, title, content, min_auth_state, max_aut
 • /mock <text> - Отправить сообщение
 • /mockmsg - Случайное сообщение
 • /mocktask - Показать задание
+• /private <имя> <текст> - Личное сообщение (видно только получателю)
 ───', 4, 4);
 
 

@@ -117,7 +117,9 @@ services:
       - DB_NAME=${DB_NAME:-stalknet}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - AUTH_SERVICE_URL=http://auth:8081
       - COMPLIANCE_SERVICE_URL=http://compliance:8086
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key}
     depends_on:
       - postgres
       - redis

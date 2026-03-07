@@ -3,21 +3,43 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"log"
 	"time"
 )
 
+// Contact представляет контакт в личном сообщении
+type Contact struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// OfflinePrivateMessage представляет офлайн-приватное сообщение
+type OfflinePrivateMessage struct {
+	ID             int       `json:"id"`
+	SenderID       int       `json:"sender_id"`
+	SenderUsername string    `json:"sender_username"`
+	RecipientID    int       `json:"recipient_id"`
+	Content        string    `json:"content"`
+	IsRead         bool      `json:"is_read"`
+	CreatedAt      time.Time `json:"created_at"`
+	ExpiresAt      time.Time `json:"expires_at"`
+}
+
 // ChatMessage представляет сообщение чата для сохранения в БД
 type ChatMessage struct {
-	ID         int       `json:"id"`
-	RoomID     int       `json:"room_id"`
-	UserID     int       `json:"user_id"`
-	Username   string    `json:"username"`
-	Content    string    `json:"content"`
-	ClientIP   string    `json:"client_ip"`
-	ClientPort int       `json:"client_port"`
-	Timestamp  time.Time `json:"timestamp"`
-	MessageType string   `json:"message_type"`
+	ID              int       `json:"id"`
+	RoomID          int       `json:"room_id"`
+	UserID          int       `json:"user_id"`
+	Username        string    `json:"username"`
+	Content         string    `json:"content"`
+	ClientIP        string    `json:"client_ip"`
+	ClientPort      int       `json:"client_port"`
+	Timestamp       time.Time `json:"timestamp"`
+	MessageType     string    `json:"message_type"`  // "message", "system", "task", "private"
+	Contacts        []Contact `json:"contacts,omitempty"`  // Для личных сообщений
+	RecipientID     int       `json:"recipient_id,omitempty"`
+	RecipientName   string    `json:"recipient_username,omitempty"`
 }
 
 // ChatRepository репозиторий для работы с сообщениями чата
@@ -99,11 +121,47 @@ func (r *ChatRepository) SaveMessage(ctx context.Context, msg *ChatMessage) erro
 	return nil
 }
 
+// SavePrivateMessage сохраняет личное сообщение в базу данных
+// Личные сообщения сохраняются только в chat_messages (не в messages)
+func (r *ChatRepository) SavePrivateMessage(ctx context.Context, msg *ChatMessage) error {
+	// Сериализация contacts в JSON
+	contactsJSON, err := json.Marshal(msg.Contacts)
+	if err != nil {
+		log.Printf("Failed to marshal contacts: %v", err)
+		return err
+	}
+
+	query := `
+		INSERT INTO chat_messages (room_id, user_id, username, content, client_ip, client_port, message_type, contacts, timestamp)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id
+	`
+	err = r.db.QueryRowContext(ctx, query,
+		msg.RoomID,
+		msg.UserID,
+		msg.Username,
+		msg.Content,
+		msg.ClientIP,
+		msg.ClientPort,
+		"private",
+		contactsJSON,
+		msg.Timestamp,
+	).Scan(&msg.ID)
+	if err != nil {
+		log.Printf("Failed to insert private message into chat_messages: %v", err)
+		return err
+	}
+
+	log.Printf("Private message saved: room=%d, from=%s, to=%s, ip=%s:%d",
+		msg.RoomID, msg.Username, msg.RecipientName, msg.ClientIP, msg.ClientPort)
+	return nil
+}
+
 // GetMessagesByRoom получает сообщения для указанной комнаты (из chat_messages)
 // Используется для API запросов истории
 func (r *ChatRepository) GetMessagesByRoom(ctx context.Context, roomID int, limit, offset int) ([]ChatMessage, error) {
 	query := `
-		SELECT id, room_id, user_id, username, content, client_ip, client_port, timestamp, message_type
+		SELECT id, room_id, user_id, username, content, client_ip, client_port, timestamp, message_type, contacts
 		FROM chat_messages
 		WHERE room_id = $1
 		ORDER BY timestamp DESC
@@ -119,6 +177,7 @@ func (r *ChatRepository) GetMessagesByRoom(ctx context.Context, roomID int, limi
 	var messages []ChatMessage
 	for rows.Next() {
 		var msg ChatMessage
+		var contactsJSON sql.NullString
 		err := rows.Scan(
 			&msg.ID,
 			&msg.RoomID,
@@ -129,10 +188,17 @@ func (r *ChatRepository) GetMessagesByRoom(ctx context.Context, roomID int, limi
 			&msg.ClientPort,
 			&msg.Timestamp,
 			&msg.MessageType,
+			&contactsJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
+		
+		// Парсим contacts если есть
+		if contactsJSON.Valid && contactsJSON.String != "" {
+			json.Unmarshal([]byte(contactsJSON.String), &msg.Contacts)
+		}
+		
 		messages = append(messages, msg)
 	}
 
@@ -146,6 +212,7 @@ func (r *ChatRepository) GetMessagesByRoom(ctx context.Context, roomID int, limi
 
 // GetRecentMessages получает последние сообщения для отображения при подключении
 // Загружает из оперативной таблицы messages (быстрый доступ)
+// Для личных сообщений используется chat_messages с contacts
 func (r *ChatRepository) GetRecentMessages(ctx context.Context, roomID int, limit int) ([]ChatMessage, error) {
 	query := `
 		SELECT m.id, m.room_id, m.user_id, u.username, m.content, m.created_at
@@ -262,4 +329,58 @@ func (r *ChatRepository) GetMessagesCountByRoom(ctx context.Context, roomID int)
 	var count int64
 	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chat_messages WHERE room_id = $1`, roomID).Scan(&count)
 	return count, err
+}
+
+// SaveOfflinePrivateMessage сохраняет офлайн-приватное сообщение
+func (r *ChatRepository) SaveOfflinePrivateMessage(ctx context.Context, msg *OfflinePrivateMessage) error {
+	query := `
+		INSERT INTO private_messages_offline 
+			(sender_id, sender_username, recipient_id, content)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, created_at, expires_at`
+	
+	return r.db.QueryRowContext(ctx, query,
+		msg.SenderID, msg.SenderUsername, msg.RecipientID, msg.Content,
+	).Scan(&msg.ID, &msg.CreatedAt, &msg.ExpiresAt)
+}
+
+// GetUnreadOfflineMessages получает непрочитанные офлайн-сообщения для пользователя
+func (r *ChatRepository) GetUnreadOfflineMessages(ctx context.Context, recipientID int) ([]OfflinePrivateMessage, error) {
+	query := `
+		SELECT id, sender_id, sender_username, recipient_id, content, is_read, created_at, expires_at
+		FROM private_messages_offline
+		WHERE recipient_id = $1 AND is_read = FALSE
+		ORDER BY created_at ASC`
+	
+	rows, err := r.db.QueryContext(ctx, query, recipientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	var messages []OfflinePrivateMessage
+	for rows.Next() {
+		var msg OfflinePrivateMessage
+		err := rows.Scan(
+			&msg.ID, &msg.SenderID, &msg.SenderUsername, &msg.RecipientID,
+			&msg.Content, &msg.IsRead, &msg.CreatedAt, &msg.ExpiresAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		messages = append(messages, msg)
+	}
+	
+	return messages, rows.Err()
+}
+
+// MarkOfflineMessagesAsRead помечает все офлайн-сообщения пользователя как прочитанные
+func (r *ChatRepository) MarkOfflineMessagesAsRead(ctx context.Context, recipientID int) error {
+	query := `
+		UPDATE private_messages_offline
+		SET is_read = TRUE
+		WHERE recipient_id = $1 AND is_read = FALSE`
+	
+	_, err := r.db.ExecContext(ctx, query, recipientID)
+	return err
 }

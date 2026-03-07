@@ -61,6 +61,13 @@ func SetupRouter(
 		auth.PUT("/update-username", authHandler.UpdateUsername)
 	}
 
+	// Поиск пользователей
+	users := router.Group("/api/users")
+	{
+		users.GET("/search", authHandler.SearchUsers)
+		users.GET("/:id", authHandler.GetUserByID)
+	}
+
 	// Контент (справка и т.д.)
 	router.GET("/api/content/:key", authHandler.GetContent)
 

@@ -11,7 +11,7 @@ const versionDisplay = document.getElementById("versionDisplay");
 const API_BASE = window.location.origin;
 
 // Версия приложения
-const APP_VERSION = "0.1.13";
+const APP_VERSION = "0.1.16";
 
 // Отображение версии
 if (versionDisplay) {
@@ -243,17 +243,51 @@ function connectWebSocket(userId, username) {
         addMessage("---", "system");
         addMessage("Подключено к чату", "system");
         addMessage("---", "system");
+        
+        // Загружаем непрочитанные офлайн-сообщения
+        if (authState === AuthState.Authorized && accessToken) {
+            loadOfflinePrivateMessages();
+        }
     };
 
     ws.onmessage = function(event) {
         try {
             const msg = JSON.parse(event.data);
+            
             if (msg.type === "message") {
                 addMessage(msg.content, "user", msg.username);
             } else if (msg.type === "system") {
                 addMessage(msg.content, "system");
             } else if (msg.type === "task") {
                 addMessage(msg.content, "task");
+            } else if (msg.type === "private_message") {
+                // Личное сообщение: формат [отправитель] private [получатель] текст
+                const senderName = msg.sender_username || msg.username;
+                const recipientName = msg.recipient_username;
+                const recipientId = msg.recipient_id;
+                const content = msg.content;
+
+                // Если мы получатель или отправитель - отображаем сообщение
+                // Но НЕ отображаем если мы отправитель (нам придёт private_message_sent)
+                if (userId !== null && recipientId !== null && userId === recipientId) {
+                    // Мы получатель - отображаем
+                    const formattedText = `[${senderName}] private [${recipientName}] ${content}`;
+                    addMessage(formattedText, "private", senderName, msg);
+                } else if (userId !== null && msg.sender_id === userId) {
+                    // Мы отправитель - НЕ отображаем здесь, придёт private_message_sent
+                    // Пропускаем это сообщение
+                } else {
+                    // Третий наблюдатель - не должно произойти из-за фильтрации
+                    // Но на всякий случай пропускаем
+                }
+            } else if (msg.type === "private_message_sent") {
+                // Подтверждение об отправке личного сообщения (только для отправителя)
+                const recipientName = msg.recipient_username;
+                const content = msg.content;
+                const formattedText = `[${username}] private [${recipientName}] ${content}`;
+                addMessage(formattedText, "private_sent", username, msg);
+            } else if (msg.type === "error") {
+                addMessage("❌ " + msg.error, "system");
             }
         } catch (e) {
             addMessage("Ошибка получения сообщения: " + e.message, "system");
@@ -282,6 +316,58 @@ function sendWebSocketMessage(text) {
         content: text
     };
     ws.send(JSON.stringify(msg));
+}
+
+// Загрузка непрочитанных офлайн-сообщений
+async function loadOfflinePrivateMessages() {
+    try {
+        const resp = await fetch(API_BASE + "/api/chat/offline-messages", {
+            method: "GET",
+            headers: {
+                "Authorization": "Bearer " + accessToken,
+                "Content-Type": "application/json"
+            }
+        });
+        
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.messages && data.messages.length > 0) {
+                addMessage("---", "system");
+                addMessage(`✉️ Получено ${data.messages.length} новых приватных сообщений:`, "system");
+                addMessage("---", "system");
+                
+                data.messages.forEach(msg => {
+                    const formattedText = `[${msg.sender_username}] private [${username}] ${msg.content}`;
+                    addMessage(formattedText, "private", msg.sender_username, {
+                        sender_id: msg.sender_id,
+                        recipient_id: userId
+                    });
+                });
+                
+                addMessage("---", "system");
+                
+                // Помечаем как прочитанные
+                markOfflineMessagesAsRead();
+            }
+        }
+    } catch (e) {
+        console.error("Failed to load offline messages:", e);
+    }
+}
+
+// Пометка офлайн-сообщений как прочитанных
+async function markOfflineMessagesAsRead() {
+    try {
+        await fetch(API_BASE + "/api/chat/offline-messages/read", {
+            method: "POST",
+            headers: {
+                "Authorization": "Bearer " + accessToken,
+                "Content-Type": "application/json"
+            }
+        });
+    } catch (e) {
+        console.error("Failed to mark messages as read:", e);
+    }
 }
 
 // Загрузка контента из API
@@ -361,45 +447,107 @@ setTimeout(() => {
     });
 }, 1000);
 
-function addMessage(text, type, msgUsername = null, isReply = false, recipientUsername = null) {
+function addMessage(text, type, msgUsername = null, isReply = false, recipientUsername = null, msgData = null) {
     type = type || "system";
     const div = document.createElement("div");
-    div.className = "message " + type;
-
-    // Добавляем класс 'own' для сообщений текущего пользователя
-    if (type === "user" && msgUsername === username) {
-        div.className += " own";
+    
+    // Определяем класс сообщения
+    let className = "message " + type;
+    
+    // Для личных сообщений добавляем свой класс
+    if (type === "private" || type === "private_sent") {
+        className = "message private";
+        // Если это своё личное сообщение (отправитель)
+        if (type === "private_sent" || (msgData && msgData.sender_id === userId)) {
+            className += " own";
+        }
+    } else if (type === "user" && msgUsername === username) {
+        className += " own";
     }
 
     if (isReply && type === "user") {
-        div.className += " reply";
+        className += " reply";
     }
+    
+    div.className = className;
 
     const time = new Date().toLocaleTimeString('ru-RU', {
         hour: '2-digit',
         minute: '2-digit'
     });
-    let usernameDisplay = "";
+    
+    let innerHTML = "<span class=\"timestamp\">[" + time + "]</span>";
 
-    if (msgUsername) {
-        usernameDisplay = "<span class=\"username\" onclick=\"setReplyTo('" + msgUsername + "')\">[" + msgUsername + "]</span> ";
+    // Для личных сообщений текст уже отформатирован с кликабельными никами
+    if (type === "private" || type === "private_sent") {
+        // Парсим формат: [отправитель] private [получатель] текст
+        const match = text.match(/^\[([^\]]+)\] private \[([^\]]+)\] (.*)$/);
+        if (match) {
+            const senderName = match[1];
+            const recipientName = match[2];
+            const messageContent = match[3];
+            
+            // Экранируем имена
+            const safeSender = senderName
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+            const safeRecipient = recipientName
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+            const safeContent = messageContent
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+            
+            innerHTML += `<span class="sender-name" data-username="${safeSender}">[${safeSender}]</span> `;
+            innerHTML += `<span class="private-label">private</span> `;
+            innerHTML += `<span class="recipient-name" data-username="${safeRecipient}">[${safeRecipient}]</span> `;
+            innerHTML += `<span class="content">${safeContent}</span>`;
+        } else {
+            // Если формат не совпал, отображаем как есть
+            const safeText = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+            innerHTML += safeText;
+        }
+    } else {
+        // Обычное сообщение с именем
+        let usernameDisplay = "";
+        if (msgUsername) {
+            usernameDisplay = "<span class=\"username\" onclick=\"setReplyTo('" + msgUsername + "')\">[" + msgUsername + "]</span> ";
+        }
+        if (recipientUsername) {
+            usernameDisplay += "<span class=\"username\" onclick=\"setReplyTo('" + recipientUsername + "')\">> [" + recipientUsername + "]</span> ";
+        }
+
+        // Экранируем HTML спецсимволы в тексте
+        const safeText = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+
+        innerHTML += usernameDisplay + safeText;
     }
-
-    if (recipientUsername) {
-        usernameDisplay += "<span class=\"username\" onclick=\"setReplyTo('" + recipientUsername + "')\">> [" + recipientUsername + "]</span> ";
-    }
-
-    // Экранируем HTML спецсимволы в тексте
-    const safeText = text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-
-    div.innerHTML = "<span class=\"timestamp\">[" + time + "]</span>" + usernameDisplay + safeText;
+    
+    div.innerHTML = innerHTML;
     messages.appendChild(div);
     messages.scrollTop = messages.scrollHeight;
+    
+    // Навешиваем обработчики клика на новые элементы
+    attachUsernameClickHandlers();
 }
 
 function sendMessage() {
@@ -448,6 +596,98 @@ function setReplyTo(nick) {
     replyToUser = nick;
     input.value = "[" + nick + "]: ";
     input.focus();
+}
+
+// Подготовка личного сообщения по клику на имени
+function preparePrivateMessage(username) {
+    if (authState < AuthState.Authorized) {
+        addMessage("❌ Личные сообщения доступны только авторизованным пользователям", "system");
+        return;
+    }
+
+    if (username === currentDisplayName) {
+        addMessage("❌ Нельзя отправить сообщение самому себе", "system");
+        return;
+    }
+
+    // Вставка команды в поле ввода
+    input.value = `/private ${username} `;
+    input.focus();
+}
+
+// Навешиваем обработчики клика на имена пользователей
+function attachUsernameClickHandlers() {
+    // Обычные сообщения - клик по имени
+    document.querySelectorAll('.message:not(.private):not(.system) .username').forEach(el => {
+        el.style.cursor = 'pointer';
+        el.style.textDecoration = 'underline';
+        el.style.textDecorationStyle = 'dotted';
+        el.style.transition = 'all 0.2s ease';
+
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const username = el.textContent.replace(/[\[\]]/g, '').trim();
+            preparePrivateMessage(username);
+        });
+
+        // Hover эффект
+        el.addEventListener('mouseenter', () => {
+            el.style.color = '#ffffff';
+            el.style.textShadow = '0 0 5px rgba(255, 255, 255, 0.5)';
+        });
+        el.addEventListener('mouseleave', () => {
+            el.style.color = '';
+            el.style.textShadow = '';
+        });
+    });
+
+    // Личные сообщения - клик по имени отправителя
+    document.querySelectorAll('.message.private .sender-name').forEach(el => {
+        el.style.cursor = 'pointer';
+        el.style.textDecoration = 'underline';
+        el.style.textDecorationStyle = 'dotted';
+        el.style.transition = 'all 0.2s ease';
+
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const username = el.getAttribute('data-username');
+            preparePrivateMessage(username);
+        });
+
+        // Hover эффект
+        el.addEventListener('mouseenter', () => {
+            el.style.color = '#ffffff';
+            el.style.textShadow = '0 0 5px rgba(255, 255, 255, 0.5)';
+        });
+        el.addEventListener('mouseleave', () => {
+            el.style.color = '';
+            el.style.textShadow = '';
+        });
+    });
+
+    // Личные сообщения - клик по имени получателя
+    document.querySelectorAll('.message.private .recipient-name').forEach(el => {
+        el.style.cursor = 'pointer';
+        el.style.textDecoration = 'underline';
+        el.style.textDecorationStyle = 'dotted';
+        el.style.transition = 'all 0.2s ease';
+
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const username = el.getAttribute('data-username');
+            preparePrivateMessage(username);
+        });
+
+        // Hover эффект
+        el.addEventListener('mouseenter', () => {
+            el.style.color = '#ffffff';
+            el.style.textShadow = '0 0 5px rgba(255, 255, 255, 0.5)';
+        });
+        el.addEventListener('mouseleave', () => {
+            el.style.color = '';
+            el.style.textShadow = '';
+        });
+    });
 }
 
 window.setReplyTo = setReplyTo;
@@ -652,11 +892,53 @@ async function handleCommand(cmd) {
             }
             break;
 
+        case "/private":
+            handlePrivateMessage(args);
+            break;
+
         default:
             addMessage("---", "system");
             addMessage("Неизвестная команда: " + command, "system");
             addMessage("---", "system");
     }
+}
+
+// Обработка личных сообщений
+function handlePrivateMessage(args) {
+    if (authState !== AuthState.Authorized) {
+        addMessage("❌ Личные сообщения доступны только авторизованным пользователям", "system");
+        return;
+    }
+
+    if (args.length < 2) {
+        addMessage("---", "system");
+        addMessage("Использование: /private <имя> <текст>", "system");
+        addMessage("Пример: /private BG Привет, как дела?", "system");
+        addMessage("---", "system");
+        return;
+    }
+
+    const recipientUsername = args[0];
+    const messageContent = args.slice(1).join(' ');
+
+    if (recipientUsername === username) {
+        addMessage("❌ Нельзя отправить сообщение самому себе", "system");
+        return;
+    }
+
+    // Отправляем через WebSocket
+    if (!wsConnected || !ws) {
+        addMessage("❌ Нет подключения к чату", "system");
+        return;
+    }
+
+    const privateMsg = {
+        type: "private_message",
+        recipient_username: recipientUsername,
+        content: messageContent
+    };
+
+    ws.send(JSON.stringify(privateMsg));
 }
 
 // === Функции авторизации ===

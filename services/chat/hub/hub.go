@@ -8,6 +8,12 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// Contact представляет контакт в личном сообщении
+type Contact struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
 // Client представляет подключённого клиента
 type Client struct {
 	Hub       *Hub
@@ -22,6 +28,7 @@ type Client struct {
 // Hub управляет всеми клиентскими соединениями
 type Hub struct {
 	Clients     map[int]map[*Client]bool // roomID -> clients
+	UserOnline  map[int]bool             // userID -> online статус
 	Register    chan *Client
 	Unregister  chan *Client
 	MessageChan chan *Message
@@ -42,6 +49,7 @@ type Message struct {
 func NewHub() *Hub {
 	return &Hub{
 		Clients:     make(map[int]map[*Client]bool),
+		UserOnline:  make(map[int]bool),
 		Register:    make(chan *Client),
 		Unregister:  make(chan *Client),
 		MessageChan: make(chan *Message, 256),
@@ -58,6 +66,7 @@ func (h *Hub) Run() {
 				h.Clients[client.RoomID] = make(map[*Client]bool)
 			}
 			h.Clients[client.RoomID][client] = true
+			h.UserOnline[client.UserID] = true
 			h.Mu.Unlock()
 
 		case client := <-h.Unregister:
@@ -68,6 +77,22 @@ func (h *Hub) Run() {
 				if len(clients) == 0 {
 					delete(h.Clients, client.RoomID)
 				}
+			}
+			// Проверяем, есть ли другие клиенты этого пользователя
+			hasOther := false
+			for _, clients := range h.Clients {
+				for c := range clients {
+					if c.UserID == client.UserID && c != client {
+						hasOther = true
+						break
+					}
+				}
+				if hasOther {
+					break
+				}
+			}
+			if !hasOther {
+				delete(h.UserOnline, client.UserID)
 			}
 			h.Mu.Unlock()
 
@@ -102,6 +127,57 @@ func (h *Hub) Broadcast(roomID, userID int, username, content, msgType string) {
 	}
 }
 
+// BroadcastPrivate отправляет личное сообщение только отправителю и получателю
+func (h *Hub) BroadcastPrivate(roomID, senderID int, senderUsername, content, msgType string, contacts []Contact) {
+	h.Mu.RLock()
+	defer h.Mu.RUnlock()
+
+	if clients, ok := h.Clients[roomID]; ok {
+		// Сериализуем сообщение
+		msgData := map[string]interface{}{
+			"type":              "private_message",
+			"sender_id":         senderID,
+			"sender_username":   senderUsername,
+			"content":           content,
+			"message_type":      msgType,
+			"contacts":          contacts,
+			"timestamp":         time.Now().Format(time.RFC3339),
+		}
+		
+		// Добавляем recipient_username из contacts
+		if len(contacts) > 1 {
+			msgData["recipient_username"] = contacts[1].Name
+			msgData["recipient_id"] = contacts[1].ID
+		}
+
+		jsonData, err := json.Marshal(msgData)
+		if err != nil {
+			return
+		}
+
+		// Отправляем только клиентам из contacts
+		for client := range clients {
+			// Проверяем, является ли клиент отправителем или получателем
+			canSee := false
+			for _, contact := range contacts {
+				if contact.ID == client.UserID {
+					canSee = true
+					break
+				}
+			}
+
+			if canSee {
+				select {
+				case client.Send <- jsonData:
+				default:
+					close(client.Send)
+					delete(clients, client)
+				}
+			}
+		}
+	}
+}
+
 // GetClientsInRoom возвращает всех клиентов в комнате
 func (h *Hub) GetClientsInRoom(roomID int) []*Client {
 	h.Mu.RLock()
@@ -126,4 +202,27 @@ func (h *Hub) GetClientCountInRoom(roomID int) int {
 		return len(clients)
 	}
 	return 0
+}
+
+// IsUserOnline проверяет, онлайн ли пользователь
+func (h *Hub) IsUserOnline(userID int) bool {
+	h.Mu.RLock()
+	defer h.Mu.RUnlock()
+
+	online, exists := h.UserOnline[userID]
+	return exists && online
+}
+
+// GetOnlineUsers возвращает список онлайн-пользователей
+func (h *Hub) GetOnlineUsers() []int {
+	h.Mu.RLock()
+	defer h.Mu.RUnlock()
+
+	users := make([]int, 0, len(h.UserOnline))
+	for userID, online := range h.UserOnline {
+		if online {
+			users = append(users, userID)
+		}
+	}
+	return users
 }

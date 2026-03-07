@@ -240,3 +240,29 @@ func (r *AuthRepository) GetUserSessions(ctx context.Context, userID int) ([]*Se
 
 	return sessions, nil
 }
+
+// SearchUsersByUsername ищет пользователей по частичному совпадению имени
+func (r *AuthRepository) SearchUsersByUsername(ctx context.Context, query string) ([]User, error) {
+	sqlQuery := `SELECT id, username, status, created_at FROM users WHERE username ILIKE $1 ORDER BY username LIMIT 10`
+	rows, err := r.db.QueryContext(ctx, sqlQuery, "%"+query+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var user User
+		var createdAt sql.NullTime
+		err := rows.Scan(&user.ID, &user.Username, &user.Status, &createdAt)
+		if err != nil {
+			return nil, err
+		}
+		if createdAt.Valid {
+			user.CreatedAt = createdAt.Time
+		}
+		users = append(users, user)
+	}
+
+	return users, rows.Err()
+}
